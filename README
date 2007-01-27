@@ -1,0 +1,80 @@
+
+Python extension module for reading flow-tools' data
+====================================================
+
+[ Home: http://www.net.uni-sb.de/~robin/flowtools
+  You'll always find the latest version there. ]
+  
+This extension module gives you a simple python interface to NetFlow
+data as stored by Mark Fullmer's flow-tools package (see
+http://www.splintered.net/sw/flow-tools).
+
+It contains a class FlowSet which reads the data from a given file
+(or from standard input). A FlowSet provides an iterator interface
+to access the individual flow records as instances of a second
+class called Flow. A Flow provides access to its data through
+attribute references. 
+
+Example of its use:
+
+    ---------------------------------------------------
+    import flowtools
+
+    set = flowtools.FlowSet( "-" ) # Read from stdin
+
+    for flow in set:
+        print "%s %s" % ( flow.srcaddr, flow.dstaddr ) 
+    ---------------------------------------------------
+
+Given a Flow, you can access all fields contained in the NetFlow
+data (see beginning of flowtools.c for a list of valid attribute
+names).
+
+Notes:
+
+    - All flow attributes containing an IP address return their
+    values as strings as default. To get an IP as a long integer,
+    append "_raw" to the attribute's name (e.g. "srcaddr_raw"). 
+
+    - The attributes "first" and "last" return times as standard
+    Unix timestamps (i.e. seconds since 1970-01-01 00:00:00). To get
+    the real values as found in the NetFlow data, use "first_raw"
+    and "last_raw", respectivly (these values are based on the
+    router's SysUptime).
+    
+    - There's an additional method "Flow.getID( bidir = 0 )" which 
+    returns a string identifying a flow. It's constructed from
+    source address/port/interface, destination
+    address/port/interface and IP protocol. If bidir==1, the tuple
+    is sorted such that two flows which only differ by direction get
+    the same ID (this assumes symmetric routing).
+
+    - There is an example script called "flowprint-full" which
+    prints all flow fields.
+
+INSTALL
+=======
+
+    Requirements:
+        - Python >= 2.2 
+        - "ftlib.h" and the compiled "libft.a" from the flow-tools
+          package
+           
+    Tested on:
+        - Linux (Debian Potato)
+        - FreeBSD (4.4-STABLE)
+
+After unpacking the tar file and changing into the contained directory do:
+
+    - python setup.py build_ext -I </dir/of/ftlib.h>  -L </dir/of/libft.a>
+    - python setup.py install
+
+
+-------
+
+Comments welcome!
+
+Robin Sommer
+<rsommer@cs.uni-sb.de>
+
+
