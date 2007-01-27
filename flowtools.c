@@ -103,6 +103,13 @@ static void FlowSetObjectDelete( FlowSetObject *self );
 static PyObject *FlowSetObjectIter( FlowSetObject *o );
 static PyObject *FlowSetObjectIterNext( FlowSetObject *o );
 static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject* kwds);
+static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyObject * kwds);
+
+static struct PyMethodDef FlowSetMethods[] = {
+    { "write", (PyCFunction)FlowSetObject_write, METH_VARARGS, "write!" },
+    { NULL, NULL}
+};
+
 
 PyTypeObject FlowSetType = {
         PyObject_HEAD_INIT(&PyType_Type)
@@ -133,7 +140,7 @@ PyTypeObject FlowSetType = {
         0,                                      /* tp_weaklistoffset */
         (getiterfunc)FlowSetObjectIter,         /* tp_iter */
         (iternextfunc)FlowSetObjectIterNext,    /* tp_iternext */
-        0,                                      /* tp_methods */
+        FlowSetMethods,                                      /* tp_methods */
         0,                                      /* tp_members */
         0,                                      /* tp_getset */
         0,                                      /* tp_base */
@@ -217,7 +224,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
 
     if( file && strcmp( file , "-" ) != 0 ){
         Py_BEGIN_ALLOW_THREADS
-        self->fd = open( file, bForWriting ? (O_CREAT | O_WRONLY) : O_RDONLY );
+        self->fd = open( file, bForWriting ? (O_CREAT | O_WRONLY) : O_RDONLY, 0644 );
         Py_END_ALLOW_THREADS
 
         if( self->fd < 0 ){
@@ -241,6 +248,12 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     Py_BEGIN_ALLOW_THREADS
 
     if (bForWriting) {
+      bzero(&version, sizeof(version));
+      version.d_version = 5;
+      version.s_version = FT_IO_SVERSION;
+      ftio_set_ver( &self->io, &version);
+      ftio_set_z_level(&self->io, 9);
+      ftio_write_header(&self->io);
     } else {
       ftio_get_ver( &self->io, &version );
       fts3rec_compute_offsets( &self->offsets, &version );
@@ -311,6 +324,38 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
     return (PyObject *)flow;
 }
 
+static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyObject * kwds) {
+  char * buf;
+  int buflen;
+  u_int32 exporter_ip;
+
+  struct ftpdu ftpdu;
+  int i, offset;
+
+  if( ! PyArg_ParseTuple( args, "Is#", &exporter_ip, &buf, &buflen ) ) return NULL;
+  printf("huaj\n");
+
+  bzero (&ftpdu, sizeof ftpdu);
+  ftpdu.bused = buflen;
+  memcpy(ftpdu.buf, buf, buflen);
+  ftpdu.ftd.exporter_ip = exporter_ip;
+  ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
+  if (ftpdu_verify(&ftpdu) < 0) return NULL;
+  fts3rec_pdu_decode(&ftpdu);
+
+  for (i = 0, offset = 0; i < ftpdu.ftd.count;
+      ++i, offset += ftpdu.ftd.rec_size)
+   {
+      printf("%d\n", offset);
+      if ((ftio_write(&self->io, (char*)ftpdu.ftd.buf+offset)) < 0)
+        return NULL;
+   }
+
+  Py_XINCREF(Py_None);
+
+  return Py_None;
+}
+
 static void FlowObjectDelete( FlowObject *self )
 {
     Py_XDECREF( self->set );
@@ -353,7 +398,7 @@ static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) 
   }
 
   return NULL;
-}   
+}
 
 static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
 {
@@ -398,6 +443,10 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
 }
 
+static int FlowObject_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
+
+}
+
 static struct PyMethodDef FlowToolsMethods[] = {
     { NULL }
 };
@@ -418,6 +467,7 @@ void initflowtools()
     
     Py_INCREF(&FlowSetType);
     PyModule_AddObject(m, "FlowSet", (PyObject *)&FlowSetType);
+    PyModule_AddObject(m, "Flow", (PyObject *)&FlowType);
 
     d = PyModule_GetDict( m );
     FlowToolsError = PyErr_NewException( "flowtools.Error", NULL, NULL );
