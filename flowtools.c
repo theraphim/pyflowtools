@@ -73,11 +73,13 @@ static PyObject *FlowToolsError;
 void initFlows( void );
 
 typedef struct {
-	PyObject_HEAD
-    int fd;
-    struct ftio io;
-    struct fts3rec_offsets offsets;
-    u_int64 xfield;
+  PyObject_HEAD
+
+  int fd;
+  struct ftio io;
+  struct fts3rec_offsets offsets;
+  u_int64 xfield;
+
 } FlowSetObject;
 
 typedef struct {
@@ -88,7 +90,7 @@ typedef struct {
 } FlowObject;
 
 static void FlowSetObjectDelete( FlowSetObject *self );
-static PyObject *FlowSetObjectGetAttr( FlowObject *self, char *name );
+static PyObject *FlowObjectGetAttr( FlowObject *self, char *name );
 static PyObject *FlowSetObjectIter( FlowSetObject *o );
 static PyObject *FlowSetObjectIterNext( FlowSetObject *o );
 static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject* kwds);
@@ -187,15 +189,29 @@ PyTypeObject FlowType = {
 };
 
 static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
+
+    static char * kwlist[] = {
+        "filename", "for_writing", NULL
+    };
+
     char* file = NULL;
+    PyObject * for_writing = NULL;
+
     struct ftver version = { 0 };
     int res = 0;
+    int bForWriting = 0;
 
-    if (! PyArg_ParseTuple(args, "|s", &file) )
+    if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sO", kwlist, &file, &for_writing) )
         return -1; 
 
+    if (PyBool_Check(for_writing) && (for_writing == Py_True))
+      bForWriting = 1;
+
     if( file && strcmp( file , "-" ) != 0 ){
-        self->fd = open( file, O_RDONLY );
+        Py_BEGIN_ALLOW_THREADS
+        self->fd = open( file, bForWriting ? (O_CREAT | O_WRONLY) : O_RDONLY );
+        Py_END_ALLOW_THREADS
+
         if( self->fd < 0 ){
             PyErr_SetFromErrnoWithFilename( PyExc_IOError, file );
             return -1;
@@ -203,7 +219,8 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     }
 
     Py_BEGIN_ALLOW_THREADS
-    res = ftio_init( &self->io, self->fd, FT_IO_FLAG_READ );
+    res = ftio_init( &self->io, self->fd, bForWriting ? (FT_IO_FLAG_WRITE | FT_IO_FLAG_ZINIT | FT_IO_FLAG_NO_SWAP) : 
+      (FT_IO_FLAG_READ | FT_IO_FLAG_MMAP));
     Py_END_ALLOW_THREADS
 
     if( res ) {
@@ -211,10 +228,17 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
 
-    ftio_get_ver( &self->io, &version );
-    fts3rec_compute_offsets( &self->offsets, &version );
+    Py_BEGIN_ALLOW_THREADS
 
-    self->xfield = ftio_xfield( &self->io );
+    if (bForWriting) {
+    } else {
+      ftio_get_ver( &self->io, &version );
+      fts3rec_compute_offsets( &self->offsets, &version );
+
+      self->xfield = ftio_xfield( &self->io );
+    }
+
+    Py_END_ALLOW_THREADS
 
     return 0;
 }
@@ -230,8 +254,13 @@ static void FlowSetObjectDelete( FlowSetObject *self )
 
 static PyObject *FlowSetObjectIter( FlowSetObject *self )
 {
-        Py_XINCREF(self);
-	return (PyObject *)self;
+    if ((self->io.flags & FT_IO_FLAG_READ) == 0) {
+      PyErr_SetNone(PyExc_ValueError);
+      return NULL;
+    }
+
+    Py_XINCREF(self);
+    return (PyObject *)self;
 }
 
 static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
@@ -239,6 +268,11 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
     FlowObject *flow;
     char *record;
     
+    if ((self->io.flags & FT_IO_FLAG_READ) == 0) {
+      PyErr_SetNone(PyExc_ValueError);
+      return NULL;
+    }
+
     Py_BEGIN_ALLOW_THREADS
     
     record = ftio_read( &self->io );
