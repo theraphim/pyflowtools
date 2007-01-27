@@ -91,12 +91,7 @@ static void FlowSetObjectDelete( FlowSetObject *self );
 static PyObject *FlowSetObjectGetAttr( FlowObject *self, char *name );
 static PyObject *FlowSetObjectIter( FlowSetObject *o );
 static PyObject *FlowSetObjectIterNext( FlowSetObject *o );
-static PyObject *FlowSetObjectNext( FlowSetObject *self, PyObject *args );
-
-static struct PyMethodDef FlowSetMethods[] = {
-    { "next", (PyCFunction)FlowSetObjectNext },
-    { NULL, NULL }
-};
+static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject* kwds);
 
 PyTypeObject FlowSetType = {
         PyObject_HEAD_INIT(&PyType_Type)
@@ -106,7 +101,7 @@ PyTypeObject FlowSetType = {
         0,                                      /* tp_itemsize */
         (destructor)FlowSetObjectDelete,        /* tp_dealloc */
         0,                                      /* tp_print */
-        (getattrfunc)FlowSetObjectGetAttr,      /* tp_getattr */
+        0,      /* tp_getattr */
         0,                                      /* tp_setattr */
         0,                                      /* tp_compare */
         (reprfunc)0,                            /* tp_repr */
@@ -119,8 +114,8 @@ PyTypeObject FlowSetType = {
         (getattrofunc)0,                        /* tp_getattro */
         (setattrofunc)0,                        /* tp_setattro */
         0,                                      /* tp_as_buffer */
-        Py_TPFLAGS_HAVE_ITER,                   /* tp_flags */
-        0,                                      /* tp_doc */
+        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,                   /* tp_flags */
+        "Stream of netflow data",                                      /* tp_doc */
         (traverseproc)0,                        /* tp_traverse */
         (inquiry)0,                             /* tp_clear */
         0,                                      /* tp_richcompare */
@@ -135,11 +130,7 @@ PyTypeObject FlowSetType = {
         0,                                      /* tp_descr_get */
         0,                                      /* tp_descr_set */
         0,                                      /* tp_dictoffset */
-        0,                                      /* tp_init */
-        0,                                      /* tp_alloc */
-        0,                                      /* tp_new */
-        0,                                      /* tp_free */
-        0,                                      /* tp_is_gc */
+        (initproc) FlowSet_init,                /* tp_init */
 };
 
 static void FlowObjectDelete( FlowObject *self );
@@ -172,8 +163,8 @@ PyTypeObject FlowType = {
         (getattrofunc)0,                        /*tp_getattro*/
         (setattrofunc)0,                        /* tp_setattro */
         0,                                      /* tp_as_buffer */
-        0,                                      /* tp_flags */
-        0,                                      /* tp_doc */
+        Py_TPFLAGS_DEFAULT,                     /* tp_flags */
+        "Flow objects",                         /* tp_doc */
         (traverseproc)0,                        /* tp_traverse */
         (inquiry)0,                             /* tp_clear */
         0,                                      /* tp_richcompare */
@@ -195,71 +186,64 @@ PyTypeObject FlowType = {
         0,                                      /* tp_is_gc */
 };
 
-static struct ftio io;
-static struct ftver version;
+static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
+    char* file = NULL;
+    struct ftver version = { 0 };
+    int res = 0;
 
-static PyObject* FlowSetObjectNew( PyObject* self, PyObject* args )
-{
-	FlowSetObject *flowset;
-    char *file = NULL;
-    int fd = 0;
+    if (! PyArg_ParseTuple(args, "|s", &file) )
+        return -1; 
 
-	if( ! PyArg_ParseTuple( args, "|s", &file ) )
-        return NULL;
-                
     if( file && strcmp( file , "-" ) != 0 ){
-        fd = open( file, O_RDONLY );
-        if( fd < 0 ){
+        self->fd = open( file, O_RDONLY );
+        if( self->fd < 0 ){
             PyErr_SetFromErrnoWithFilename( PyExc_IOError, file );
-            return NULL;
+            return -1;
         }
     }
 
-    if( ftio_init( &io, fd, FT_IO_FLAG_READ ) < 0 ){
-        PyErr_SetString( FlowToolsError, "ftio_init() failed" );
-        return NULL;
-    }
-        
-	flowset = PyObject_NEW( FlowSetObject, &FlowSetType );
-	if( ! flowset ) return NULL;
+    Py_BEGIN_ALLOW_THREADS
+    res = ftio_init( &self->io, self->fd, FT_IO_FLAG_READ );
+    Py_END_ALLOW_THREADS
 
-    ftio_get_ver( &io, &version );
-    fts3rec_compute_offsets( &flowset->offsets, &version );
-    
-    flowset->fd = fd;
-    flowset->io = io;
-    flowset->xfield = ftio_xfield( &flowset->io );
-        
-	return (PyObject *)flowset;
+    if( res ) {
+        PyErr_SetString( FlowToolsError, "ftio_init() failed" );
+        return -1;
+    }
+
+    ftio_get_ver( &self->io, &version );
+    fts3rec_compute_offsets( &self->offsets, &version );
+
+    self->xfield = ftio_xfield( &self->io );
+
+    return 0;
 }
 
 static void FlowSetObjectDelete( FlowSetObject *self )
 {
-    ftio_close( &self->io );
+    Py_BEGIN_ALLOW_THREADS
+    ftio_close( &(self->io) );
     if( self->fd ) close( self->fd );
-    PyObject_Del( self );
+    Py_END_ALLOW_THREADS
+    self->ob_type->tp_free(self);
 }
-
-static PyObject *FlowSetObjectGetAttr( FlowObject *self, char *name )
-{
-    return Py_FindMethod( FlowSetMethods, (PyObject *)self, name );
-}
-
 
 static PyObject *FlowSetObjectIter( FlowSetObject *self )
 {
+        Py_XINCREF(self);
 	return (PyObject *)self;
-}
-
-static PyObject *FlowSetObjectNext( FlowSetObject *self, PyObject *args )
-{
-    return FlowSetObjectIterNext( self );
 }
 
 static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
 {
     FlowObject *flow;
-    char *record = ftio_read( &self->io );
+    char *record;
+    
+    Py_BEGIN_ALLOW_THREADS
+    
+    record = ftio_read( &self->io );
+
+    Py_END_ALLOW_THREADS
     
     if( ! record ){
         PyErr_SetNone( PyExc_StopIteration );
@@ -270,15 +254,15 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
     if( ! flow ) return NULL;
     flow->record = record;
     flow->set = self;
-    Py_INCREF( self );
+    Py_XINCREF( self );
     
     return (PyObject *)flow;
 }
 
 static void FlowObjectDelete( FlowObject *self )
 {
-    Py_DECREF( self );
-    PyObject_DEL( self );
+    Py_XDECREF( self->set );
+    self->ob_type->tp_free(self);
 }
 
 #define getoffset( f ) ( * ( (u_int16 *)( (void *)( &self->set->offsets ) + f->offset ) ) )
@@ -374,8 +358,7 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
 }
 
 static struct PyMethodDef FlowToolsMethods[] = {
-    { "FlowSet", FlowSetObjectNew, METH_VARARGS, "Create new FlowSet object" },
-    { NULL, NULL, 0, NULL }
+    { NULL }
 };
 
 
@@ -383,8 +366,18 @@ void initflowtools()
 {
     PyObject *d, *m;
 
-	m = Py_InitModule( "flowtools", FlowToolsMethods );
+    FlowSetType.tp_new = PyType_GenericNew;
+    FlowType.tp_new = PyType_GenericNew;
+
+    if ((PyType_Ready(&FlowSetType) < 0) || (PyType_Ready(&FlowType) < 0))
+      return;
+
+
+    m = Py_InitModule3( "flowtools", FlowToolsMethods, "test" );
     
+    Py_INCREF(&FlowSetType);
+    PyModule_AddObject(m, "FlowSet", (PyObject *)&FlowSetType);
+
     d = PyModule_GetDict( m );
     FlowToolsError = PyErr_NewException( "flowtools.Error", NULL, NULL );
     PyDict_SetItemString( d, "Error", FlowToolsError );

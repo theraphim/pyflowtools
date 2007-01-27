@@ -1,3 +1,9 @@
+Version 0.3.1
+    - Bugfix: Py_XINCREF on get iterator function
+    - Bugfix: Py_XDECREF(self->set) on Flow deallocation
+    - Bugfix: begin/end threads in blocking areas
+    - Bugfix: Allow python to preempt thread waiting for flow input
+    - Code cleanup
 
 Version 0.3 
     
