@@ -76,7 +76,10 @@ typedef struct {
   PyObject_HEAD
 
   int fd;
+
   struct ftio io;
+  int ftio_init_complete;
+
   struct fts3rec_offsets offsets;
   u_int64 xfield;
 
@@ -204,7 +207,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sO", kwlist, &file, &for_writing) )
         return -1; 
 
-    if (PyBool_Check(for_writing) && (for_writing == Py_True))
+    if (for_writing && PyBool_Check(for_writing) && (for_writing == Py_True))
       bForWriting = 1;
 
     if( file && strcmp( file , "-" ) != 0 ){
@@ -228,6 +231,8 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
 
+    self->ftio_init_complete = 1;
+
     Py_BEGIN_ALLOW_THREADS
 
     if (bForWriting) {
@@ -245,10 +250,18 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
 
 static void FlowSetObjectDelete( FlowSetObject *self )
 {
-    Py_BEGIN_ALLOW_THREADS
-    ftio_close( &(self->io) );
-    if( self->fd ) close( self->fd );
-    Py_END_ALLOW_THREADS
+    if (self->ftio_init_complete) {
+      Py_BEGIN_ALLOW_THREADS
+      ftio_close( &(self->io) );
+      Py_END_ALLOW_THREADS
+    }
+
+    if( self->fd ) {
+      Py_BEGIN_ALLOW_THREADS
+      close( self->fd );
+      Py_END_ALLOW_THREADS
+    }
+
     self->ob_type->tp_free(self);
 }
 
