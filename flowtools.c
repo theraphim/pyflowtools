@@ -253,6 +253,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
       version.s_version = FT_IO_SVERSION;
       ftio_set_ver( &self->io, &version);
       ftio_set_z_level(&self->io, 9);
+      ftio_set_byte_order(&self->io, FT_HEADER_LITTLE_ENDIAN);
       ftio_write_header(&self->io);
     } else {
       ftio_get_ver( &self->io, &version );
@@ -331,29 +332,40 @@ static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyOb
 
   struct ftpdu ftpdu;
   int i, offset;
+  int res = 0;
 
   if( ! PyArg_ParseTuple( args, "Is#", &exporter_ip, &buf, &buflen ) ) return NULL;
-  printf("huaj\n");
 
   bzero (&ftpdu, sizeof ftpdu);
   ftpdu.bused = buflen;
   memcpy(ftpdu.buf, buf, buflen);
   ftpdu.ftd.exporter_ip = exporter_ip;
   ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
-  if (ftpdu_verify(&ftpdu) < 0) return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+
+  if ((res = ftpdu_verify(&ftpdu)) < 0)
+    goto resout;
+
   fts3rec_pdu_decode(&ftpdu);
 
   for (i = 0, offset = 0; i < ftpdu.ftd.count;
       ++i, offset += ftpdu.ftd.rec_size)
-   {
-      printf("%d\n", offset);
-      if ((ftio_write(&self->io, (char*)ftpdu.ftd.buf+offset)) < 0)
-        return NULL;
-   }
+      if ((res = ftio_write(&self->io, (char*)ftpdu.ftd.buf+offset)) < 0)
+        goto resout;
+
+resout:
+  Py_END_ALLOW_THREADS
+
+  if (res < 0) {
+    PyErr_SetString( FlowToolsError, "Error writing the flow" );
+    return NULL;
+  }
 
   Py_XINCREF(Py_None);
 
   return Py_None;
+
 }
 
 static void FlowObjectDelete( FlowObject *self )
