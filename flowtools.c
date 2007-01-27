@@ -23,6 +23,83 @@ typedef struct {
     int offset;
 } RecordAttr;
 
+struct RecordAttrDef {
+  enum RecordAttrType type;
+  u_int64 xfield;
+  int offset;
+};
+
+typedef struct {
+  PyObject_HEAD
+
+  int fd;
+
+  struct ftio io;
+  int ftio_init_complete;
+
+  struct fts3rec_offsets offsets;
+  u_int64 xfield;
+
+} FlowSetObject;
+
+typedef struct {
+        PyObject_HEAD
+    char *record;
+    struct fts3rec_offsets fo;
+    FlowSetObject *set;
+} FlowObject;
+
+
+static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f);
+
+#define A(n, t, x) { #n, FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(n) } },
+#define B(n, t, x, z) { #n, FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(z) } },
+
+PyGetSetDef FlowObjectGS[] = {
+  A(dFlows, RF_UINT32, FT_XFIELD_DFLOWS)
+  A(dOctets, RF_UINT32, FT_XFIELD_DOCTETS)
+  A(dPkts, RF_UINT32, FT_XFIELD_DPKTS)
+  A(dst_as, RF_UINT16, FT_XFIELD_DST_AS)
+  A(dst_mask, RF_UINT8, FT_XFIELD_DST_MASK)
+  A(dst_tag, RF_UINT32, FT_XFIELD_DST_TAG)
+  A(dstaddr, RF_ADDR, FT_XFIELD_DSTADDR)
+  B(dstaddr_raw, RF_UINT32, FT_XFIELD_DSTADDR, dstaddr)
+  A(dstport, RF_UINT16, FT_XFIELD_DSTPORT)
+  A(engine_id, RF_UINT8, FT_XFIELD_ENGINE_ID)
+  A(engine_type, RF_UINT8, FT_XFIELD_ENGINE_TYPE)
+  A(exaddr, RF_ADDR, FT_XFIELD_EXADDR)
+  A(extra_pkts, RF_UINT32, FT_XFIELD_EXTRA_PKTS)
+  B(first, RF_TIME, FT_XFIELD_FIRST, First)
+  B(first_raw, RF_UINT32, FT_XFIELD_FIRST, First)
+  A(in_encaps, RF_UINT8, FT_XFIELD_IN_ENCAPS)
+  A(input, RF_UINT16, FT_XFIELD_INPUT)
+  B(last, RF_TIME, FT_XFIELD_LAST, Last)
+  B(last_raw, RF_UINT32, FT_XFIELD_LAST, Last)
+  A(marked_tos, RF_UINT8, FT_XFIELD_MARKED_TOS)
+  A(nexthop, RF_ADDR, FT_XFIELD_NEXTHOP)
+  B(nexthop_raw, RF_UINT32, FT_XFIELD_NEXTHOP, nexthop)
+  A(out_encaps, RF_UINT8, FT_XFIELD_OUT_ENCAPS)
+  A(output, RF_UINT16, FT_XFIELD_OUTPUT)
+  A(peer_nexthop, RF_ADDR, FT_XFIELD_PEER_NEXTHOP)
+  B(peer_nexthop_raw, RF_UINT32, FT_XFIELD_PEER_NEXTHOP, peer_nexthop)
+  A(prot, RF_UINT8, FT_XFIELD_PROT)
+  A(router_sc, RF_UINT32, FT_XFIELD_ROUTER_SC)
+  A(src_as, RF_UINT16, FT_XFIELD_SRC_AS)
+  A(src_mask, RF_UINT8, FT_XFIELD_SRC_MASK)
+  A(src_tag, RF_UINT32, FT_XFIELD_SRC_TAG)
+  A(srcaddr, RF_ADDR, FT_XFIELD_SRCADDR)
+  B(srcaddr_raw, RF_UINT32, FT_XFIELD_SRCADDR, srcaddr)
+  A(srcport, RF_UINT16, FT_XFIELD_SRCPORT)
+  A(sysUpTime, RF_UINT32, FT_XFIELD_SYSUPTIME)
+  A(tcp_flags, RF_UINT8, FT_XFIELD_TCP_FLAGS)
+  A(tos, RF_UINT8, FT_XFIELD_TOS)
+  A(unix_nsecs, RF_UINT32, FT_XFIELD_UNIX_NSECS)
+  A(unix_secs, RF_UINT32, FT_XFIELD_UNIX_SECS)
+  { NULL }
+};
+
+#undef A
+#undef B
 
 RecordAttr Attrs[] = {
     { "dFlows", RF_UINT32, FT_XFIELD_DFLOWS, offset( dFlows ) },
@@ -71,26 +148,6 @@ RecordAttr Attrs[] = {
 static PyObject *FlowToolsError;
 
 void initFlows( void );
-
-typedef struct {
-  PyObject_HEAD
-
-  int fd;
-
-  struct ftio io;
-  int ftio_init_complete;
-
-  struct fts3rec_offsets offsets;
-  u_int64 xfield;
-
-} FlowSetObject;
-
-typedef struct {
-	PyObject_HEAD
-    char *record;
-    struct fts3rec_offsets fo;
-    FlowSetObject *set;
-} FlowObject;
 
 static void FlowSetObjectDelete( FlowSetObject *self );
 static PyObject *FlowObjectGetAttr( FlowObject *self, char *name );
@@ -155,7 +212,7 @@ PyTypeObject FlowType = {
         0,                                      /* tp_itemsize */
         (destructor)FlowObjectDelete,           /* tp_dealloc */
         0,                                      /* tp_print */
-        (getattrfunc)FlowObjectGetAttr,         /* tp_getattr */
+        0, // (getattrfunc)FlowObjectGetAttr,         /* tp_getattr */
         0,                                      /* tp_setattr */
         0,                                      /* tp_compare */
         (reprfunc)0,                            /* tp_repr */
@@ -178,7 +235,7 @@ PyTypeObject FlowType = {
         0,                                      /*tp_iternext*/
         0,                                      /* tp_methods */
         0,                                      /* tp_members */
-        0,                                      /* tp_getset */
+        FlowObjectGS,                                      /* tp_getset */
         0,                                      /* tp_base */
         0,                                      /* tp_dict */
         0,                                      /* tp_descr_get */
@@ -360,6 +417,37 @@ static PyObject *FlowObjectGetAttr( FlowObject *self, char *name )
     
 	return Py_FindMethod(FlowMethods, (PyObject *)self, name);
 }
+
+static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) {
+  u_int32 addr;
+  u_int32 unix_secs, unix_nsecs, sysUpTime;
+  struct fttime time;
+
+  switch (f->type) {
+    case RF_ADDR:
+      addr = ntohl( *( (u_int32 *)( self->record + getoffset( f ) ) ) );
+      return Py_BuildValue( "s",  (char *) inet_ntoa( *(struct in_addr *)&addr ) );
+
+    case RF_UINT8:
+      return Py_BuildValue( "i", (int) *( (u_int8 *)( self->record + getoffset( f ) ) ) );
+
+    case RF_UINT16:
+      return Py_BuildValue( "i", (int) *( (u_int16 *)( self->record + getoffset( f ) ) ) );
+
+    case RF_UINT32:
+      return PyLong_FromUnsignedLong( (unsigned long)*( (u_int32 *)( self->record + getoffset( f ) ) ) );
+
+    case RF_TIME:
+      unix_secs = *( (u_int32 *)( self->record + self->set->offsets.unix_secs ) );
+      unix_nsecs = *( (u_int32 *)( self->record + self->set->offsets.unix_nsecs ) );
+      sysUpTime = *( (u_int32 *)( self->record + self->set->offsets.sysUpTime ) );
+      time = ftltime( sysUpTime, unix_secs, unix_nsecs,
+        *( (u_int32 *)( self->record + getoffset( f ) ) ) );
+      return Py_BuildValue( "f", time.secs + time.msecs * 1e-3 );
+  }
+
+  return NULL;
+}   
 
 static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
 {
