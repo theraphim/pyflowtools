@@ -511,7 +511,6 @@ static PyObject *FlowPDUIter_Next( FlowPDUIterObject *self )
     self->offset += self->pdu->ftpdu.ftd.rec_size;
 
     Py_XINCREF( self->pdu );
-    Py_XINCREF(flow);
     return (PyObject *)flow;
 }
 
