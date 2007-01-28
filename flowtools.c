@@ -19,6 +19,7 @@ typedef struct {
 
   struct fts3rec_offsets offsets;
   u_int64 xfield;
+  int nflows;
 
 } FlowSetObject;
 
@@ -47,6 +48,7 @@ typedef struct {
   int pos, offset;
 } FlowPDUIterObject;
 
+PyTypeObject FlowPDUType;
 /* Define flow attributes */
 
 enum RecordAttrType {
@@ -273,6 +275,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
       ftio_set_ver( &self->io, &version);
       ftio_set_z_level(&self->io, 9);
       ftio_set_byte_order(&self->io, FT_HEADER_LITTLE_ENDIAN);
+      ftio_set_flows_count(&self->io, 0);
       ftio_write_header(&self->io);
     } else {
       ftio_get_ver( &self->io, &version );
@@ -289,6 +292,19 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
 static void FlowSetObjectDelete( FlowSetObject *self )
 {
     if (self->ftio_init_complete) {
+      if ((self->io.flags & FT_IO_FLAG_WRITE) != 0) {
+        //ftio_set_cap_time(&ftio, cap_file.time, (u_int32)tt_now);
+        //ftio_set_corrupt(&ftio, cap_file.hdr_flows_corrupt);
+        //ftio_set_lost(&ftio, cap_file.hdr_flows_lost);
+        //ftio_set_reset(&ftio, cap_file.hdr_flows_reset);
+        ftio_set_flows_count(&self->io, self->nflows);
+
+        /* re-write header first */
+        Py_BEGIN_ALLOW_THREADS
+        ftio_write_header(&self->io);
+        Py_END_ALLOW_THREADS
+      }
+
       Py_BEGIN_ALLOW_THREADS
       ftio_close( &(self->io) );
       Py_END_ALLOW_THREADS
@@ -347,11 +363,9 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
 }
 
 static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyObject * kwds) {
-  char * buf;
-  int buflen;
-  u_int32 exporter_ip;
 
-  struct ftpdu ftpdu;
+  FlowPDUObject * PDU = NULL;
+
   int i, offset;
   int res = 0;
 
@@ -360,29 +374,21 @@ static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyOb
     return NULL;
   }
 
-  if( ! PyArg_ParseTuple( args, "Is#", &exporter_ip, &buf, &buflen ) ) return NULL;
+  if( ! PyArg_ParseTuple( args, "O!", &FlowPDUType, &PDU ) ) return NULL;
 
-  bzero (&ftpdu, sizeof ftpdu);
-  memcpy(ftpdu.buf, buf, buflen);
-
+  Py_XINCREF(PDU);
   Py_BEGIN_ALLOW_THREADS
 
-  ftpdu.ftd.exporter_ip = exporter_ip;
-  ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
-  ftpdu.bused = buflen;
-
-  if ((res = ftpdu_verify(&ftpdu)) < 0)
-    goto resout;
-
-  fts3rec_pdu_decode(&ftpdu);
-
-  for (i = 0, offset = 0; i < ftpdu.ftd.count;
-      ++i, offset += ftpdu.ftd.rec_size)
-      if ((res = ftio_write(&self->io, (char*)ftpdu.ftd.buf+offset)) < 0)
+  for (i = 0, offset = 0; i < PDU->ftpdu.ftd.count;
+      ++i, offset += PDU->ftpdu.ftd.rec_size)
+      if ((res = ftio_write(&self->io, (char*)PDU->ftpdu.ftd.buf+offset)) < 0)
         goto resout;
 
 resout:
   Py_END_ALLOW_THREADS
+  Py_XDECREF(PDU);
+
+  self->nflows += i;
 
   if (res < 0) {
     PyErr_SetString( FlowToolsError, "Error writing the flow" );
