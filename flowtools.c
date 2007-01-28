@@ -24,9 +24,25 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     char *record;
-    struct fts3rec_offsets fo;
-    FlowSetObject *set;
+    struct fts3rec_offsets offsets;
+    u_int64 xfield;
+    PyObject *parent;
 } FlowObject;
+
+typedef struct {
+  PyObject_HEAD
+
+  struct ftpdu ftpdu;
+  struct fts3rec_offsets offsets;
+  u_int64 xfield;
+} FlowPDUObject;
+
+typedef struct {
+  PyObject_HEAD
+
+  FlowPDUObject * pdu;
+  int pos, offset;
+} FlowPDUIterObject;
 
 /* Define flow attributes */
 
@@ -319,7 +335,9 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
 	flow = PyObject_NEW( FlowObject, &FlowType );
     if( ! flow ) return NULL;
     flow->record = record;
-    flow->set = self;
+    flow->parent = self;
+    flow->xfield = self->xfield;
+    memcpy(&flow->offsets, &self->offsets, sizeof(self->offsets));
     Py_XINCREF( self );
     
     return (PyObject *)flow;
@@ -334,15 +352,21 @@ static PyObject *FlowSetObject_write(FlowSetObject * self, PyObject * args, PyOb
   int i, offset;
   int res = 0;
 
+  if ((self->io.flags & FT_IO_FLAG_WRITE) == 0) {
+    PyErr_SetNone(PyExc_ValueError);
+    return NULL;
+  }
+
   if( ! PyArg_ParseTuple( args, "Is#", &exporter_ip, &buf, &buflen ) ) return NULL;
 
   bzero (&ftpdu, sizeof ftpdu);
-  ftpdu.bused = buflen;
   memcpy(ftpdu.buf, buf, buflen);
-  ftpdu.ftd.exporter_ip = exporter_ip;
-  ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
 
   Py_BEGIN_ALLOW_THREADS
+
+  ftpdu.ftd.exporter_ip = exporter_ip;
+  ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
+  ftpdu.bused = buflen;
 
   if ((res = ftpdu_verify(&ftpdu)) < 0)
     goto resout;
@@ -370,18 +394,18 @@ resout:
 
 static void FlowObjectDelete( FlowObject *self )
 {
-    Py_XDECREF( self->set );
+    Py_XDECREF( self->parent );
     self->ob_type->tp_free(self);
 }
 
-#define getoffset( f ) ( * ( (u_int16 *)( (void *)( &self->set->offsets ) + f->offset ) ) )
+#define getoffset( f ) ( * ( (u_int16 *)( (void *)( &self->offsets ) + f->offset ) ) )
 
 static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) {
   u_int32 addr;
   u_int32 unix_secs, unix_nsecs, sysUpTime;
   struct fttime time;
 
-  if( ! ( self->set->xfield & f->xfield ) ){
+  if( ! ( self->xfield & f->xfield ) ){
     PyErr_SetString( FlowToolsError, "Attribute not supported by flow type" );
     return NULL;
   }
@@ -401,9 +425,9 @@ static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) 
       return PyLong_FromUnsignedLong( (unsigned long)*( (u_int32 *)( self->record + getoffset( f ) ) ) );
 
     case RF_TIME:
-      unix_secs = *( (u_int32 *)( self->record + self->set->offsets.unix_secs ) );
-      unix_nsecs = *( (u_int32 *)( self->record + self->set->offsets.unix_nsecs ) );
-      sysUpTime = *( (u_int32 *)( self->record + self->set->offsets.sysUpTime ) );
+      unix_secs = *( (u_int32 *)( self->record + self->offsets.unix_secs ) );
+      unix_nsecs = *( (u_int32 *)( self->record + self->offsets.unix_nsecs ) );
+      sysUpTime = *( (u_int32 *)( self->record + self->offsets.sysUpTime ) );
       time = ftltime( sysUpTime, unix_secs, unix_nsecs,
         *( (u_int32 *)( self->record + getoffset( f ) ) ) );
       return Py_BuildValue( "f", time.secs + time.msecs * 1e-3 );
@@ -423,18 +447,18 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     if( ! PyArg_ParseTuple( args, "|i", &bidir ) ) return NULL;
 
     p = src;
-    memcpy( p, self->record + self->set->offsets.srcaddr, sizeof( u_int32 ) );
+    memcpy( p, self->record + self->offsets.srcaddr, sizeof( u_int32 ) );
     p += sizeof( u_int32 );
-    memcpy( p, self->record + self->set->offsets.srcport, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.srcport, sizeof( u_int16 ) );
     p += sizeof( u_int16 );
-    memcpy( p, self->record + self->set->offsets.input, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.input, sizeof( u_int16 ) );
     
     p = dst;
-    memcpy( p, self->record + self->set->offsets.dstaddr, sizeof( u_int32 ) );
+    memcpy( p, self->record + self->offsets.dstaddr, sizeof( u_int32 ) );
     p += sizeof( u_int32 );
-    memcpy( p, self->record + self->set->offsets.dstport, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.dstport, sizeof( u_int16 ) );
     p += sizeof( u_int16 );
-    memcpy( p, self->record + self->set->offsets.output, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.output, sizeof( u_int16 ) );
     
     p = buffer;
     if( ( ! bidir ) || ( memcmp( src, dst, sizeof( src ) ) < 0 ) ){
@@ -450,7 +474,7 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
         p += sizeof( src );
     }
 
-    memcpy( p, self->record + self->set->offsets.prot, sizeof( u_int8 ) );
+    memcpy( p, self->record + self->offsets.prot, sizeof( u_int8 ) );
         
     return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
 }
@@ -458,6 +482,186 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
 static int FlowObject_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
 
 }
+
+static PyObject *FlowPDUIter_Iter( FlowPDUIterObject *self )
+{
+    Py_XINCREF(self);
+    return (PyObject *)self;
+}
+
+static PyObject *FlowPDUIter_Next( FlowPDUIterObject *self )
+{
+    FlowObject * flow;
+
+    if (self->pos >= self->pdu->ftpdu.ftd.count) {
+        PyErr_SetNone( PyExc_StopIteration );
+        return NULL;
+    }
+
+    flow = PyObject_NEW( FlowObject, &FlowType );
+
+    if( ! flow ) return NULL;
+
+    flow->record = (char*) (self->pdu->ftpdu.ftd.buf + self->offset);
+    flow->parent = self->pdu;
+    flow->xfield = self->pdu->xfield;
+    memcpy(&flow->offsets, &self->pdu->offsets, sizeof(self->pdu->offsets));
+
+    self->pos++;
+    self->offset += self->pdu->ftpdu.ftd.rec_size;
+
+    Py_XINCREF( self->pdu );
+    Py_XINCREF(flow);
+    return (PyObject *)flow;
+}
+
+static void FlowPDUIter_Delete( FlowPDUIterObject *self )
+{
+    Py_XDECREF( self->pdu );
+    self->ob_type->tp_free(self);
+}
+
+
+PyTypeObject FlowPDUIterType = {
+        PyObject_HEAD_INIT(&PyType_Type)
+        0,                                      /* ob_size */
+        "flowtools.FlowPDUIter",                    /* tp_name */
+        sizeof( FlowPDUIterObject),                 /* tp_basicsize */
+        0,                                      /* tp_itemsize */
+        FlowPDUIter_Delete,        /* tp_dealloc */
+        0,                                      /* tp_print */
+        0,      /* tp_getattr */
+        0,                                      /* tp_setattr */
+        0,                                      /* tp_compare */
+        (reprfunc)0,                            /* tp_repr */
+        0,                                      /* tp_as_number */
+        0,                                      /* tp_as_sequence */
+        0,                                      /* tp_as_mapping */
+        (hashfunc)0,                            /* tp_hash */
+        (ternaryfunc)0,                         /* tp_call */
+        0,                                      /* tp_str */
+        (getattrofunc)0,                        /* tp_getattro */
+        (setattrofunc)0,                        /* tp_setattro */
+        0,                                      /* tp_as_buffer */
+        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,                   /* tp_flags */
+        "Iterator for PDU",                                      /* tp_doc */
+        (traverseproc)0,                        /* tp_traverse */
+        (inquiry)0,                             /* tp_clear */
+        0,                                      /* tp_richcompare */
+        0,                                      /* tp_weaklistoffset */
+        (getiterfunc)FlowPDUIter_Iter,         /* tp_iter */
+        FlowPDUIter_Next,    /* tp_iternext */
+        0,                                      /* tp_methods */
+        0,                                      /* tp_members */
+        0,                                      /* tp_getset */
+        0,                                      /* tp_base */
+        0,                                      /* tp_dict */
+        0,                                      /* tp_descr_get */
+        0,                                      /* tp_descr_set */
+        0,                                      /* tp_dictoffset */
+        0,                /* tp_init */
+};
+
+
+static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) {
+
+  static char * kwlist[] = {
+    "exporter", "buffer", NULL
+  };
+
+  char * buf;
+  int buflen;
+  u_int32 exporter_ip;
+
+  int res = 0, n = 0;
+
+  if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) ) 
+    return -1;
+
+  bzero (&self->ftpdu, sizeof(self->ftpdu));
+  memcpy(self->ftpdu.buf, buf, buflen);
+
+  Py_BEGIN_ALLOW_THREADS
+
+  self->ftpdu.ftd.exporter_ip = exporter_ip;
+  self->ftpdu.ftd.byte_order = FT_HEADER_LITTLE_ENDIAN;
+  self->ftpdu.bused = buflen;
+
+  if ((res = ftpdu_verify(&self->ftpdu)) < 0)
+    goto resout;
+
+  n = fts3rec_pdu_decode(&self->ftpdu);
+
+  self->xfield = ftrec_xfield(&self->ftpdu.ftv);
+  fts3rec_compute_offsets( &self->offsets, &self->ftpdu.ftv );
+
+resout:
+  Py_END_ALLOW_THREADS
+
+  if (res < 0) 
+    return -1;
+
+  return 0;
+}
+
+static PyObject *FlowPDU_Iter( FlowPDUObject *self )
+{
+    FlowPDUIterObject * iter = PyObject_NEW(FlowPDUIterObject, &FlowPDUIterType);
+
+    iter->pdu = self;
+    iter->pos = iter->offset = 0;
+
+    Py_XINCREF(self);
+    Py_XINCREF(iter);
+    return (PyObject *) iter;
+}
+
+static void FlowPDU_Delete( FlowPDUObject *self )
+{
+    self->ob_type->tp_free(self);
+}
+
+
+PyTypeObject FlowPDUType = {
+        PyObject_HEAD_INIT(&PyType_Type)
+        0,                                      /* ob_size */
+        "flowtools.FlowPDU",                    /* tp_name */
+        sizeof( FlowPDUObject),                 /* tp_basicsize */
+        0,                                      /* tp_itemsize */
+        FlowPDU_Delete,        /* tp_dealloc */
+        0,                                      /* tp_print */
+        0,      /* tp_getattr */
+        0,                                      /* tp_setattr */
+        0,                                      /* tp_compare */
+        (reprfunc)0,                            /* tp_repr */
+        0,                                      /* tp_as_number */
+        0,                                      /* tp_as_sequence */
+        0,                                      /* tp_as_mapping */
+        (hashfunc)0,                            /* tp_hash */
+        (ternaryfunc)0,                         /* tp_call */
+        0,                                      /* tp_str */
+        (getattrofunc)0,                        /* tp_getattro */
+        (setattrofunc)0,                        /* tp_setattro */
+        0,                                      /* tp_as_buffer */
+        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,                   /* tp_flags */
+        "Stream of netflow data",                                      /* tp_doc */
+        (traverseproc)0,                        /* tp_traverse */
+        (inquiry)0,                             /* tp_clear */
+        0,                                      /* tp_richcompare */
+        0,                                      /* tp_weaklistoffset */
+        (getiterfunc)FlowPDU_Iter,         /* tp_iter */
+        0,    /* tp_iternext */
+        0,                                      /* tp_methods */
+        0,                                      /* tp_members */
+        0,                                      /* tp_getset */
+        0,                                      /* tp_base */
+        0,                                      /* tp_dict */
+        0,                                      /* tp_descr_get */
+        0,                                      /* tp_descr_set */
+        0,                                      /* tp_dictoffset */
+        (initproc) FlowPDU_init,                /* tp_init */
+};
+
 
 static struct PyMethodDef FlowToolsMethods[] = {
     { NULL }
@@ -470,15 +674,23 @@ void initflowtools()
 
     FlowSetType.tp_new = PyType_GenericNew;
     FlowType.tp_new = PyType_GenericNew;
+    FlowPDUType.tp_new = PyType_GenericNew;
+    FlowPDUIterType.tp_new = PyType_GenericNew;
 
-    if ((PyType_Ready(&FlowSetType) < 0) || (PyType_Ready(&FlowType) < 0))
+    if ((PyType_Ready(&FlowSetType) < 0) || 
+        (PyType_Ready(&FlowType) < 0) ||
+        (PyType_Ready(&FlowPDUType) < 0) ||
+        (PyType_Ready(&FlowPDUIterType) < 0))
       return;
 
 
     m = Py_InitModule3( "flowtools", FlowToolsMethods, "test" );
     
     Py_INCREF(&FlowSetType);
+    Py_INCREF(&FlowPDUType);
+    Py_INCREF(&FlowType);
     PyModule_AddObject(m, "FlowSet", (PyObject *)&FlowSetType);
+    PyModule_AddObject(m, "FlowPDU", (PyObject *)&FlowPDUType);
     PyModule_AddObject(m, "Flow", (PyObject *)&FlowType);
 
     d = PyModule_GetDict( m );
