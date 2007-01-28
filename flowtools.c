@@ -1,6 +1,7 @@
 /* $Header: /home/robin/repository/netflow/flowtools.c,v 1.9 2002/05/21 21:53:02 robin Exp $ */
 
 #include <Python.h>
+#include <structmember.h>
 #include <fcntl.h>
 #include <stddef.h>
 #include <arpa/inet.h>
@@ -35,6 +36,8 @@ typedef struct {
   struct ftpdu ftpdu;
   struct fts3rec_offsets offsets;
   u_int64 xfield;
+  u_int32 seq_rcv;
+  int length;
 } FlowPDUObject;
 
 typedef struct {
@@ -573,6 +576,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   u_int32 exporter_ip;
 
   int res = 0, n = 0;
+  struct ftseq ftseq;
 
   if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) ) 
     return -1;
@@ -589,7 +593,16 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   if ((res = ftpdu_verify(&self->ftpdu)) < 0)
     goto resout;
 
-  n = fts3rec_pdu_decode(&self->ftpdu);
+  bzero(&ftseq, sizeof(ftseq));
+
+//  ftpdu_check_seq(&self->ftpdu, &ftseq);
+
+  self->seq_rcv = ((struct ftpdu_header *) &self->ftpdu.buf)->flow_sequence;
+#if BYTE_ORDER == LITTLE_ENDIAN
+  SWAPINT32(self->seq_rcv);
+#endif
+
+  self->length = fts3rec_pdu_decode(&self->ftpdu);
 
   self->xfield = ftrec_xfield(&self->ftpdu.ftv);
   fts3rec_compute_offsets( &self->offsets, &self->ftpdu.ftv );
@@ -619,6 +632,10 @@ static void FlowPDU_Delete( FlowPDUObject *self )
 {
     self->ob_type->tp_free(self);
 }
+
+static struct PyMemberDef FlowPDU_Members[] = {
+  { "seq_rcv", T_UINT, offsetof(FlowPDUObject, seq_rcv), RO, "rcv" },
+  { 0 } };
 
 
 PyTypeObject FlowPDUType = {
@@ -651,7 +668,7 @@ PyTypeObject FlowPDUType = {
         (getiterfunc)FlowPDU_Iter,         /* tp_iter */
         0,    /* tp_iternext */
         0,                                      /* tp_methods */
-        0,                                      /* tp_members */
+        FlowPDU_Members,                                      /* tp_members */
         0,                                      /* tp_getset */
         0,                                      /* tp_base */
         0,                                      /* tp_dict */
