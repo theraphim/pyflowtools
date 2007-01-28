@@ -36,8 +36,8 @@ typedef struct {
   struct ftpdu ftpdu;
   struct fts3rec_offsets offsets;
   u_int64 xfield;
-  u_int32 seq_rcv;
-  int length;
+  u_int32 sequence;
+  int length, count;
 } FlowPDUObject;
 
 typedef struct {
@@ -62,8 +62,8 @@ struct RecordAttrDef {
 static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f);
 
 #define offset( x ) offsetof( struct fts3rec_offsets, x )
-#define A(n, t, x) { #n, FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(n) } },
-#define B(n, t, x, z) { #n, FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(z) } },
+#define A(n, t, x) { #n, (getter) FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(n) } },
+#define B(n, t, x, z) { #n, (getter) FlowObjectGetter, NULL, NULL, &(struct RecordAttrDef){ t, x, offset(z) } },
 
 PyGetSetDef FlowObjectGS[] = {
   A(dFlows, RF_UINT32, FT_XFIELD_DFLOWS)
@@ -576,7 +576,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   u_int32 exporter_ip;
 
   int res = 0, n = 0;
-  struct ftseq ftseq;
+  struct ftpdu_header * ph = NULL;
 
   if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) ) 
     return -1;
@@ -593,13 +593,13 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   if ((res = ftpdu_verify(&self->ftpdu)) < 0)
     goto resout;
 
-  bzero(&ftseq, sizeof(ftseq));
+  ph = (struct ftpdu_header *) &self->ftpdu.buf;
 
-//  ftpdu_check_seq(&self->ftpdu, &ftseq);
-
-  self->seq_rcv = ((struct ftpdu_header *) &self->ftpdu.buf)->flow_sequence;
+  self->sequence = ph->flow_sequence;
+  self->count = ph->count;
 #if BYTE_ORDER == LITTLE_ENDIAN
-  SWAPINT32(self->seq_rcv);
+  SWAPINT32(self->sequence);
+  SWAPINT16(self->count);
 #endif
 
   self->length = fts3rec_pdu_decode(&self->ftpdu);
@@ -634,7 +634,8 @@ static void FlowPDU_Delete( FlowPDUObject *self )
 }
 
 static struct PyMemberDef FlowPDU_Members[] = {
-  { "seq_rcv", T_UINT, offsetof(FlowPDUObject, seq_rcv), RO, "rcv" },
+  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
+  { "count", T_INT, offsetof(FlowPDUObject, count), RO, "Flows in this PDU" },
   { 0 } };
 
 
@@ -699,15 +700,15 @@ void initflowtools()
         (PyType_Ready(&FlowPDUIterType) < 0))
       return;
 
-
     m = Py_InitModule3( "flowtools", FlowToolsMethods, "test" );
     
     Py_INCREF(&FlowSetType);
     Py_INCREF(&FlowPDUType);
     Py_INCREF(&FlowType);
-    PyModule_AddObject(m, "FlowSet", (PyObject *)&FlowSetType);
-    PyModule_AddObject(m, "FlowPDU", (PyObject *)&FlowPDUType);
-    PyModule_AddObject(m, "Flow", (PyObject *)&FlowType);
+
+    PyModule_AddObject(m, "FlowSet", (PyObject *) &FlowSetType);
+    PyModule_AddObject(m, "FlowPDU", (PyObject *) &FlowPDUType);
+    PyModule_AddObject(m, "Flow", (PyObject *) &FlowType);
 
     d = PyModule_GetDict( m );
     FlowToolsError = PyErr_NewException( "flowtools.Error", NULL, NULL );
