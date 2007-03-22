@@ -630,7 +630,6 @@ static PyObject *FlowPDU_Iter( FlowPDUObject *self )
     iter->pos = iter->offset = 0;
 
     Py_XINCREF(self);
-    Py_XINCREF(iter);
     return (PyObject *) iter;
 }
 
