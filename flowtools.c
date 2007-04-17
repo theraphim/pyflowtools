@@ -643,6 +643,51 @@ static PyObject *FlowPDU_Iter( FlowPDUObject *self )
     return (PyObject *) iter;
 }
 
+static int tricmp(u_int32 a, u_int32 b) {
+  if (a == b) return 0;
+  if (a < b) return -1;
+  return 1;
+}
+
+int FlowPDU_Compare(FlowPDUObject * o1, FlowPDUObject * o2) {
+  int a, b, c, d;
+
+  if ((PyObject_IsInstance(o1, &FlowPDUType) != 1) ||
+    (PyObject_IsInstance(o1, &FlowPDUType) != 1)) {
+    if (PyErr_Occurred() == NULL)
+      PyErr_SetString(PyExc_TypeError, "Can only compare to FlowPDU");
+    return -1;
+  }
+
+  if (o1->ftpdu.ftd.exporter_ip != o2->ftpdu.ftd.exporter_ip) {
+    PyErr_SetString(PyExc_ValueError, "Can only compare to same exporter");
+    return -1;
+  }
+
+  a = tricmp(o1->sequence, o2->sequence);
+  b = tricmp(o1->sysUpTime, o2->sysUpTime);
+  c = tricmp(o1->unix_secs, o2->unix_secs);
+  d = tricmp(o1->unix_nsecs, o2->unix_nsecs);
+
+  if ((a == 0) && (b == 0) && (c == 0) && (d == 0))
+    return 0;
+
+  // TODO: 
+  if (a < 0) {
+    if ((c > 0) || ((c == 0) && (d >= 0))) {
+      return 1;
+    } else {
+      return -1;
+    }
+  } else {
+    if ((c < 0) || ((c == 0) && (d <= 0))) {
+      return -1;
+    } else {
+      return 1;
+    }
+  }
+}
+
 static void FlowPDU_Delete( FlowPDUObject *self )
 {
     self->ob_type->tp_free(self);
@@ -669,7 +714,7 @@ PyTypeObject FlowPDUType = {
         0,                                      /* tp_print */
         0,      /* tp_getattr */
         0,                                      /* tp_setattr */
-        0,                                      /* tp_compare */
+        (cmpfunc) FlowPDU_Compare,                                      /* tp_compare */
         (reprfunc)0,                            /* tp_repr */
         0,                                      /* tp_as_number */
         0,                                      /* tp_as_sequence */
