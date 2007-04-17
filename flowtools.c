@@ -38,6 +38,7 @@ typedef struct {
   struct fts3rec_offsets offsets;
   u_int64 xfield;
   u_int32 sequence;
+  u_int32 sysUpTime, unix_secs, unix_nsecs;
   int length, count;
 } FlowPDUObject;
 
@@ -603,9 +604,18 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 
   self->sequence = ph->flow_sequence;
   self->count = ph->count;
+  
+  self->sysUpTime = ph->sysUpTime;
+  self->unix_secs = ph->unix_secs;
+  self->unix_nsecs = ph->unix_nsecs;
+
 #if BYTE_ORDER == LITTLE_ENDIAN
   SWAPINT32(self->sequence);
   SWAPINT16(self->count);
+
+  SWAPINT32(self->sysUpTime);
+  SWAPINT32(self->unix_secs);
+  SWAPINT32(self->unix_nsecs);
 #endif
 
   self->length = fts3rec_pdu_decode(&self->ftpdu);
@@ -639,8 +649,13 @@ static void FlowPDU_Delete( FlowPDUObject *self )
 }
 
 static struct PyMemberDef FlowPDU_Members[] = {
-  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
+  { "sequence", T_ULONG, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
   { "count", T_INT, offsetof(FlowPDUObject, count), RO, "Flows in this PDU" },
+  { "sysUpTime", T_ULONG, offsetof(FlowPDUObject, sysUpTime), RO, "Router uptime" },
+  { "unix_secs", T_ULONG, offsetof(FlowPDUObject, unix_secs), RO, "Unix timestamp" },
+  { "unix_nsecs", T_ULONG, offsetof(FlowPDUObject, unix_nsecs), RO, "Unix timestamp (nsec part)" },
+
+
   { 0 } };
 
 
