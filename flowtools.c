@@ -655,10 +655,27 @@ static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) 
   if (FlowPDU_IsAdjacent_Helper(o1, o2))
     Py_RETURN_TRUE;
 
-  if (o1->sequence == o2->sequence)
+  if (o1->sequence == o2->sequence) {
     if (o1->unix_secs < o2->unix_secs)
       Py_RETURN_TRUE;
-
+    if ((o1->unix_secs == o2->unix_secs) && (o1->unix_nsecs == o2->unix_nsecs))
+      Py_RETURN_TRUE;
+  } else if (o1->sequence < o2->sequence) {
+    if (o1->sysUpTime <= o2->sysUpTime) {
+      if (o1->unix_secs < o2->unix_secs)
+        Py_RETURN_TRUE;
+      else 
+        if ((o1->unix_secs == o2->unix_secs) && (o1->unix_nsecs <= o2->unix_nsecs))
+          Py_RETURN_TRUE;
+    } else {
+      if (o1->unix_secs > o2->unix_secs)
+        Py_RETURN_TRUE;
+      else
+        if ((o1->unix_secs == o2->unix_secs) && (o1->unix_nsecs >= o2->unix_nsecs))
+          Py_RETURN_TRUE;
+    }
+  } 
+          
   Py_RETURN_FALSE;
 }
 
