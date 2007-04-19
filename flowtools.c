@@ -649,43 +649,49 @@ static int tricmp(u_int32 a, u_int32 b) {
   return 1;
 }
 
-int FlowPDU_Compare(FlowPDUObject * o1, FlowPDUObject * o2) {
+static PyObject* Py_ReturnBool(const int x) {
+  if (x) Py_RETURN_TRUE;
+  else Py_RETURN_FALSE;
+}
+
+static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) {
+  Py_XINCREF(Py_NotImplemented);
+  return Py_NotImplemented;
+}
+
+static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int opid) {
   int a, b, c, d;
 
   if ((PyObject_IsInstance(o1, &FlowPDUType) != 1) ||
     (PyObject_IsInstance(o1, &FlowPDUType) != 1)) {
     if (PyErr_Occurred() == NULL)
       PyErr_SetString(PyExc_TypeError, "Can only compare to FlowPDU");
-    return -1;
+    return NULL;
+  }
+
+  if (o1->ftpdu.bused != o2->ftpdu.bused) {
+    if (opid == Py_NE) Py_RETURN_TRUE;
+    if (opid == Py_EQ) Py_RETURN_FALSE;
+  }
+
+  if ((opid == Py_NE) || (opid == Py_EQ) || (opid == Py_LE) || (opid == Py_GE)) {
+    if (memcmp(o1->ftpdu.buf, o2->ftpdu.buf, o1->ftpdu.bused) == 0)
+      return Py_ReturnBool((opid == Py_EQ) || (opid == Py_LE) || (opid == Py_GE));
+    else 
+      if ((opid == Py_NE) || (opid == Py_EQ))
+        return Py_ReturnBool(opid == Py_NE);
   }
 
   if (o1->ftpdu.ftd.exporter_ip != o2->ftpdu.ftd.exporter_ip) {
-    PyErr_SetString(PyExc_ValueError, "Can only compare to same exporter");
-    return -1;
+    Py_XINCREF(Py_NotImplemented);
+    return Py_NotImplemented;
   }
 
-  a = tricmp(o1->sequence, o2->sequence);
-  b = tricmp(o1->sysUpTime, o2->sysUpTime);
-  c = tricmp(o1->unix_secs, o2->unix_secs);
-  d = tricmp(o1->unix_nsecs, o2->unix_nsecs);
+  if ((opid == Py_LT) || (opid == Py_LE))
+    return FlowPDU_Compare_Helper(o1, o2);
+  else
+    return FlowPDU_Compare_Helper(o2, o1);
 
-  if ((a == 0) && (b == 0) && (c == 0) && (d == 0))
-    return 0;
-
-  // TODO: 
-  if (a < 0) {
-    if ((c > 0) || ((c == 0) && (d >= 0))) {
-      return 1;
-    } else {
-      return -1;
-    }
-  } else {
-    if ((c < 0) || ((c == 0) && (d <= 0))) {
-      return -1;
-    } else {
-      return 1;
-    }
-  }
 }
 
 static void FlowPDU_Delete( FlowPDUObject *self )
@@ -703,7 +709,6 @@ static struct PyMemberDef FlowPDU_Members[] = {
 
   { 0 } };
 
-
 PyTypeObject FlowPDUType = {
         PyObject_HEAD_INIT(&PyType_Type)
         0,                                      /* ob_size */
@@ -714,7 +719,7 @@ PyTypeObject FlowPDUType = {
         0,                                      /* tp_print */
         0,      /* tp_getattr */
         0,                                      /* tp_setattr */
-        (cmpfunc) FlowPDU_Compare,                                      /* tp_compare */
+        0,                                      /* tp_compare */
         (reprfunc)0,                            /* tp_repr */
         0,                                      /* tp_as_number */
         0,                                      /* tp_as_sequence */
@@ -729,7 +734,7 @@ PyTypeObject FlowPDUType = {
         "Stream of netflow data",                                      /* tp_doc */
         (traverseproc)0,                        /* tp_traverse */
         (inquiry)0,                             /* tp_clear */
-        0,                                      /* tp_richcompare */
+        (richcmpfunc) FlowPDU_RichCompare,                                      /* tp_richcompare */
         0,                                      /* tp_weaklistoffset */
         (getiterfunc)FlowPDU_Iter,         /* tp_iter */
         0,    /* tp_iternext */
