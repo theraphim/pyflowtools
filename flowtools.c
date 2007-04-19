@@ -655,8 +655,7 @@ static PyObject* Py_ReturnBool(const int x) {
 }
 
 static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) {
-  Py_XINCREF(Py_NotImplemented);
-  return Py_NotImplemented;
+  Py_RETURN_FALSE;
 }
 
 static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int opid) {
@@ -683,8 +682,7 @@ static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int
   }
 
   if (o1->ftpdu.ftd.exporter_ip != o2->ftpdu.ftd.exporter_ip) {
-    Py_XINCREF(Py_NotImplemented);
-    return Py_NotImplemented;
+    Py_RETURN_FALSE;
   }
 
   if ((opid == Py_LT) || (opid == Py_LE))
