@@ -355,7 +355,7 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
 	flow = PyObject_NEW( FlowObject, &FlowType );
     if( ! flow ) return NULL;
     flow->record = record;
-    flow->parent = self;
+    flow->parent = (PyObject*) self;
     flow->xfield = self->xfield;
     memcpy(&flow->offsets, &self->offsets, sizeof(self->offsets));
     Py_XINCREF( self );
@@ -489,10 +489,6 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
 }
 
-static int FlowObject_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
-
-}
-
 static PyObject *FlowPDUIter_Iter( FlowPDUIterObject *self )
 {
     Py_XINCREF(self);
@@ -513,7 +509,7 @@ static PyObject *FlowPDUIter_Next( FlowPDUIterObject *self )
     if( ! flow ) return NULL;
 
     flow->record = (char*) (self->pdu->ftpdu.ftd.buf + self->offset);
-    flow->parent = self->pdu;
+    flow->parent = (PyObject *) self->pdu;
     flow->xfield = self->pdu->xfield;
     memcpy(&flow->offsets, &self->pdu->offsets, sizeof(self->pdu->offsets));
 
@@ -537,7 +533,7 @@ PyTypeObject FlowPDUIterType = {
         "flowtools.FlowPDUIter",                    /* tp_name */
         sizeof( FlowPDUIterObject),                 /* tp_basicsize */
         0,                                      /* tp_itemsize */
-        FlowPDUIter_Delete,        /* tp_dealloc */
+        (destructor) FlowPDUIter_Delete,        /* tp_dealloc */
         0,                                      /* tp_print */
         0,      /* tp_getattr */
         0,                                      /* tp_setattr */
@@ -558,8 +554,8 @@ PyTypeObject FlowPDUIterType = {
         (inquiry)0,                             /* tp_clear */
         0,                                      /* tp_richcompare */
         0,                                      /* tp_weaklistoffset */
-        (getiterfunc)FlowPDUIter_Iter,         /* tp_iter */
-        FlowPDUIter_Next,    /* tp_iternext */
+        (getiterfunc) FlowPDUIter_Iter,         /* tp_iter */
+        (iternextfunc) FlowPDUIter_Next,    /* tp_iternext */
         0,                                      /* tp_methods */
         0,                                      /* tp_members */
         0,                                      /* tp_getset */
@@ -582,7 +578,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   int buflen;
   u_int32 exporter_ip;
 
-  int res = 0, n = 0;
+  int res = 0;
   struct ftpdu_header * ph = NULL;
 
   if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) ) 
@@ -662,10 +658,8 @@ static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) 
 }
 
 static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int opid) {
-  int a, b, c, d;
-
-  if ((PyObject_IsInstance(o1, &FlowPDUType) != 1) ||
-    (PyObject_IsInstance(o1, &FlowPDUType) != 1)) {
+  if ((PyObject_IsInstance((PyObject *) o1, (PyObject *) &FlowPDUType) != 1) ||
+    (PyObject_IsInstance((PyObject *) o1, (PyObject *) &FlowPDUType) != 1)) {
     if (PyErr_Occurred() == NULL)
       PyErr_SetString(PyExc_TypeError, "Can only compare to FlowPDU");
     return NULL;
@@ -728,7 +722,7 @@ PyTypeObject FlowPDUType = {
         "flowtools.FlowPDU",                    /* tp_name */
         sizeof( FlowPDUObject),                 /* tp_basicsize */
         0,                                      /* tp_itemsize */
-        FlowPDU_Delete,        /* tp_dealloc */
+        (destructor) FlowPDU_Delete,        /* tp_dealloc */
         0,                                      /* tp_print */
         0,      /* tp_getattr */
         0,                                      /* tp_setattr */
