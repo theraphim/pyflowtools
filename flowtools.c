@@ -643,18 +643,21 @@ static PyObject *FlowPDU_Iter( FlowPDUObject *self )
     return (PyObject *) iter;
 }
 
-static int tricmp(u_int32 a, u_int32 b) {
-  if (a == b) return 0;
-  if (a < b) return -1;
-  return 1;
-}
 
 static PyObject* Py_ReturnBool(const int x) {
   if (x) Py_RETURN_TRUE;
   else Py_RETURN_FALSE;
 }
 
+static int FlowPDU_IsAdjacent_Helper(FlowPDUObject * o1, FlowPDUObject * o2) {
+  return (((o1->sequence + o1->count) % (u_int32) 0xffffffff) == o2->sequence) &&
+    (o1->sysUpTime <= o2->sysUpTime) && (o1->unix_secs <= o2->unix_secs) &&
+    (o2->unix_nsecs <= o2->unix_nsecs);
+}
+
 static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) {
+  if (FlowPDU_IsAdjacent_Helper(o1, o2))
+    Py_RETURN_TRUE;
   Py_RETURN_FALSE;
 }
 
@@ -689,7 +692,15 @@ static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int
     return FlowPDU_Compare_Helper(o1, o2);
   else
     return FlowPDU_Compare_Helper(o2, o1);
+}
 
+static PyObject *FlowPDU_IsNext(FlowPDUObject * self, PyObject * args, PyObject * kwds) {
+
+  FlowPDUObject * PDU = NULL;
+
+  if( ! PyArg_ParseTuple( args, "O!", &FlowPDUType, &PDU ) ) return NULL;
+
+  return Py_ReturnBool(FlowPDU_IsAdjacent_Helper(self, PDU));
 }
 
 static void FlowPDU_Delete( FlowPDUObject *self )
@@ -703,9 +714,13 @@ static struct PyMemberDef FlowPDU_Members[] = {
   { "sysUpTime", T_ULONG, offsetof(FlowPDUObject, sysUpTime), RO, "Router uptime" },
   { "unix_secs", T_ULONG, offsetof(FlowPDUObject, unix_secs), RO, "Unix timestamp" },
   { "unix_nsecs", T_ULONG, offsetof(FlowPDUObject, unix_nsecs), RO, "Unix timestamp (nsec part)" },
-
-
   { 0 } };
+
+static struct PyMethodDef FlowPDU_Methods[] = {
+  { "is_next", (PyCFunction)FlowPDU_IsNext, METH_VARARGS, "Is this next?" },
+  { NULL, NULL}
+};
+
 
 PyTypeObject FlowPDUType = {
         PyObject_HEAD_INIT(&PyType_Type)
@@ -736,7 +751,7 @@ PyTypeObject FlowPDUType = {
         0,                                      /* tp_weaklistoffset */
         (getiterfunc)FlowPDU_Iter,         /* tp_iter */
         0,    /* tp_iternext */
-        0,                                      /* tp_methods */
+        FlowPDU_Methods,                                      /* tp_methods */
         FlowPDU_Members,                                      /* tp_members */
         0,                                      /* tp_getset */
         0,                                      /* tp_base */
