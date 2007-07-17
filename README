@@ -1,19 +1,39 @@
 
-Python extension module for reading flow-tools' data
+Python extension module for working with flow-tools' data
 ====================================================
 
-[ Home: http://www.net.uni-sb.de/~robin/flowtools
-  You'll always find the latest version there. ]
+Home: http://code.google.com/p/pyflowtools/
   
 This extension module gives you a simple python interface to NetFlow
-data as stored by Mark Fullmer's flow-tools package (see
-http://www.splintered.net/sw/flow-tools).
+data as stored by flow-tools package (http://flow-tools.googlecode.com/).
 
-It contains a class FlowSet which reads the data from a given file
-(or from standard input). A FlowSet provides an iterator interface
+It contains 2 public classes - FlowSet and FlowPDU.
+
+FlowSet can read and write data from/to a given file (or from standard
+input/output).  FlowPDU parses "raw" netflow PDU (UDP packet).
+
+In reader mode, FlowSet provides an iterator interface
 to access the individual flow records as instances of a second
 class called Flow. A Flow provides access to its data through
-attribute references. 
+attribute references.
+
+In writer mode, FlowSet allows us to write FlowPDU instances to a stream by
+calling FlowSetInstance.write(FlowPDUinstance).
+
+This release candidate doesn't allow to write streams to stdout, yet.
+
+FlowPDU object is constructed by passing the exporter IP and the UDP packet
+payload to the FlowPDU() constructor. You can then iterate over the FlowPDU
+instance to get individual flows (like with FlowSet),
+
+It is possible to query header fields of parsed PDU. It is also possible to
+compare 2 PDUs.  The module will try to do its best to figure out which PDU was
+issued earlier in time (if they aren't equal).  You can call
+FlowPDUInstance.is_next(FlowPDUInstance2) to figure out if Instance2 is
+immediate successor of Instance.
+
+There are plans to write proper documentation for this module, apparently,
+nobody has done it, yet.
 
 Example of its use:
 
@@ -52,29 +72,21 @@ Notes:
     - There is an example script called "flowprint-full" which
     prints all flow fields.
 
-INSTALL
-=======
+Installing:
+
+    If you want to use stable version consider using pyflowtools package from
+    your distribution.
+
+Building:
 
     Requirements:
-        - Python >= 2.2 
-        - "ftlib.h" and the compiled "libft.a" from the flow-tools
-          package
+        - Python >= 2.4 
+        - Headers and libraries from the flow-tools package
            
     Tested on:
-        - Linux (Debian Potato)
-        - FreeBSD (4.4-STABLE)
+        - Fedora 7 (primary development platform)
 
 After unpacking the tar file and changing into the contained directory do:
 
     - python setup.py build_ext -I </dir/of/ftlib.h>  -L </dir/of/libft.a>
     - python setup.py install
-
-
--------
-
-Comments welcome!
-
-Robin Sommer
-<rsommer@cs.uni-sb.de>
-
-
