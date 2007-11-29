@@ -5,11 +5,11 @@ import sys
 from distutils.core import setup, Extension
 
 setup( name="pyflowtools", 
-       version="0.3.2_rc1",
-       author="Robin Sommer",
-       author_email="rsommer@cs.uni-sb.de",
+       version="0.3.2",
+       author="Paul P. Komkoff Jr",
+       author_email="i@stingr.net",
        license="GPL",
-       url="http://www.net.uni-sb.de/~robin/flowtools",
+       url="http://pyflowtools.googlecode.com",
        ext_modules = [ Extension( "flowtools", ["flowtools.c"],
                                   libraries = [ "ft", "z" ],
                                  ) ] )
