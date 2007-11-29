@@ -18,17 +18,17 @@ typedef struct {
   int ftio_init_complete;
 
   struct fts3rec_offsets offsets;
-  u_int64 xfield;
+  uint64_t xfield;
   int nflows;
 
 } FlowSetObject;
 
 typedef struct {
-    PyObject_HEAD
-    char *record;
-    struct fts3rec_offsets offsets;
-    u_int64 xfield;
-    PyObject *parent;
+  PyObject_HEAD
+  char *record;
+  struct fts3rec_offsets offsets;
+  uint64_t xfield;
+  PyObject *parent;
 } FlowObject;
 
 typedef struct {
@@ -36,9 +36,9 @@ typedef struct {
 
   struct ftpdu ftpdu;
   struct fts3rec_offsets offsets;
-  u_int64 xfield;
-  u_int32 sequence;
-  u_int32 sysUpTime, unix_secs, unix_nsecs;
+  uint64_t xfield;
+  uint32_t sequence;
+  uint32_t sysUpTime, unix_secs, unix_nsecs;
   int length, count;
 } FlowPDUObject;
 
@@ -53,12 +53,12 @@ PyTypeObject FlowPDUType;
 /* Define flow attributes */
 
 enum RecordAttrType {
-    RF_ADDR, RF_UINT32, RF_UINT16, RF_UINT8, RF_TIME
+  RF_ADDR, RF_UINT32, RF_UINT16, RF_UINT8, RF_TIME
 };
 
 struct RecordAttrDef {
   enum RecordAttrType type;
-  u_int64 xfield;
+  uint64_t xfield;
   int offset;
 };
 
@@ -118,8 +118,6 @@ PyGetSetDef FlowObjectGS[] = {
 // End define flow attributes
 
 static PyObject *FlowToolsError;
-
-void initFlows( void );
 
 static void FlowSetObjectDelete( FlowSetObject *self );
 static PyObject *FlowSetObjectIter( FlowSetObject *o );
@@ -408,11 +406,11 @@ static void FlowObjectDelete( FlowObject *self )
     self->ob_type->tp_free(self);
 }
 
-#define getoffset( f ) ( * ( (u_int16 *)( (void *)( &self->offsets ) + f->offset ) ) )
+#define getoffset( f ) ( * ( (uint16_t *)( (void *)( &self->offsets ) + f->offset ) ) )
 
 static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) {
-  u_int32 addr;
-  u_int32 unix_secs, unix_nsecs, sysUpTime;
+  uint32_t addr;
+  uint32_t unix_secs, unix_nsecs, sysUpTime;
   struct fttime time;
 
   if( ! ( self->xfield & f->xfield ) ){
@@ -422,24 +420,24 @@ static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) 
 
   switch (f->type) {
     case RF_ADDR:
-      addr = ntohl( *( (u_int32 *)( self->record + getoffset( f ) ) ) );
+      addr = ntohl( *( (uint32_t *)( self->record + getoffset( f ) ) ) );
       return Py_BuildValue( "s",  (char *) inet_ntoa( *(struct in_addr *)&addr ) );
 
     case RF_UINT8:
-      return Py_BuildValue( "i", (int) *( (u_int8 *)( self->record + getoffset( f ) ) ) );
+      return Py_BuildValue( "i", (int) *( (uint8_t *)( self->record + getoffset( f ) ) ) );
 
     case RF_UINT16:
-      return Py_BuildValue( "i", (int) *( (u_int16 *)( self->record + getoffset( f ) ) ) );
+      return Py_BuildValue( "i", (int) *( (uint16_t *)( self->record + getoffset( f ) ) ) );
 
     case RF_UINT32:
-      return PyLong_FromUnsignedLong( (unsigned long)*( (u_int32 *)( self->record + getoffset( f ) ) ) );
+      return PyLong_FromUnsignedLong( (unsigned long)*( (uint32_t *)( self->record + getoffset( f ) ) ) );
 
     case RF_TIME:
-      unix_secs = *( (u_int32 *)( self->record + self->offsets.unix_secs ) );
-      unix_nsecs = *( (u_int32 *)( self->record + self->offsets.unix_nsecs ) );
-      sysUpTime = *( (u_int32 *)( self->record + self->offsets.sysUpTime ) );
+      unix_secs = *( (uint32_t *)( self->record + self->offsets.unix_secs ) );
+      unix_nsecs = *( (uint32_t *)( self->record + self->offsets.unix_nsecs ) );
+      sysUpTime = *( (uint32_t *)( self->record + self->offsets.sysUpTime ) );
       time = ftltime( sysUpTime, unix_secs, unix_nsecs,
-        *( (u_int32 *)( self->record + getoffset( f ) ) ) );
+        *( (uint32_t *)( self->record + getoffset( f ) ) ) );
       return Py_BuildValue( "f", time.secs + time.msecs * 1e-3 );
   }
 
@@ -457,18 +455,18 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     if( ! PyArg_ParseTuple( args, "|i", &bidir ) ) return NULL;
 
     p = src;
-    memcpy( p, self->record + self->offsets.srcaddr, sizeof( u_int32 ) );
-    p += sizeof( u_int32 );
-    memcpy( p, self->record + self->offsets.srcport, sizeof( u_int16 ) );
-    p += sizeof( u_int16 );
-    memcpy( p, self->record + self->offsets.input, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.srcaddr, sizeof( uint32_t ) );
+    p += sizeof( uint32_t );
+    memcpy( p, self->record + self->offsets.srcport, sizeof( uint16_t ) );
+    p += sizeof( uint16_t );
+    memcpy( p, self->record + self->offsets.input, sizeof( uint16_t ) );
     
     p = dst;
-    memcpy( p, self->record + self->offsets.dstaddr, sizeof( u_int32 ) );
-    p += sizeof( u_int32 );
-    memcpy( p, self->record + self->offsets.dstport, sizeof( u_int16 ) );
-    p += sizeof( u_int16 );
-    memcpy( p, self->record + self->offsets.output, sizeof( u_int16 ) );
+    memcpy( p, self->record + self->offsets.dstaddr, sizeof( uint32_t ) );
+    p += sizeof( uint32_t );
+    memcpy( p, self->record + self->offsets.dstport, sizeof( uint16_t ) );
+    p += sizeof( uint16_t );
+    memcpy( p, self->record + self->offsets.output, sizeof( uint16_t ) );
     
     p = buffer;
     if( ( ! bidir ) || ( memcmp( src, dst, sizeof( src ) ) < 0 ) ){
@@ -484,7 +482,7 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
         p += sizeof( src );
     }
 
-    memcpy( p, self->record + self->offsets.prot, sizeof( u_int8 ) );
+    memcpy( p, self->record + self->offsets.prot, sizeof( uint8_t ) );
         
     return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
 }
@@ -576,7 +574,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 
   char * buf;
   int buflen;
-  u_int32 exporter_ip;
+  uint32_t exporter_ip;
 
   int res = 0;
   struct ftpdu_header * ph = NULL;
@@ -646,7 +644,7 @@ static PyObject* Py_ReturnBool(const int x) {
 }
 
 static int FlowPDU_IsAdjacent_Helper(FlowPDUObject * o1, FlowPDUObject * o2) {
-  return (((o1->sequence + o1->count) % (u_int32) 0xffffffff) == o2->sequence) &&
+  return (((o1->sequence + o1->count) % (uint32_t) 0xffffffff) == o2->sequence) &&
     (o1->sysUpTime <= o2->sysUpTime) && (o1->unix_secs <= o2->unix_secs) &&
     (o2->unix_nsecs <= o2->unix_nsecs);
 }
