@@ -235,6 +235,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     struct ftver version = { 0 };
     int res = 0;
     int bForWriting = 0;
+    int f_mmap = 0;
 
     if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sO", kwlist, &file, &for_writing) )
         return -1; 
@@ -243,6 +244,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
       bForWriting = 1;
 
     if( file && strcmp( file , "-" ) != 0 ){
+        f_mmap = FT_IO_FLAG_MMAP;
         Py_BEGIN_ALLOW_THREADS
         self->fd = open( file, bForWriting ? (O_CREAT | O_WRONLY) : O_RDONLY, 0644 );
         Py_END_ALLOW_THREADS
@@ -255,7 +257,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
 
     Py_BEGIN_ALLOW_THREADS
     res = ftio_init( &self->io, self->fd, bForWriting ? (FT_IO_FLAG_WRITE | FT_IO_FLAG_ZINIT | FT_IO_FLAG_NO_SWAP) : 
-      (FT_IO_FLAG_READ | FT_IO_FLAG_MMAP));
+      (FT_IO_FLAG_READ | f_mmap));
     Py_END_ALLOW_THREADS
 
     if( res ) {
