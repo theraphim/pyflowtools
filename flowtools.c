@@ -432,7 +432,7 @@ static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) 
       return Py_BuildValue( "i", (int) *( (uint16_t *)( self->record + getoffset( f ) ) ) );
 
     case RF_UINT32:
-      return PyLong_FromUnsignedLong( (unsigned long)*( (uint32_t *)( self->record + getoffset( f ) ) ) );
+      return PyLong_FromUnsignedLong( (unsigned int)*( (uint32_t *)( self->record + getoffset( f ) ) ) );
 
     case RF_TIME:
       unix_secs = *( (uint32_t *)( self->record + self->offsets.unix_secs ) );
@@ -725,11 +725,11 @@ static void FlowPDU_Delete( FlowPDUObject *self )
 }
 
 static struct PyMemberDef FlowPDU_Members[] = {
-  { "sequence", T_ULONG, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
+  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
   { "count", T_INT, offsetof(FlowPDUObject, count), RO, "Flows in this PDU" },
-  { "sysUpTime", T_ULONG, offsetof(FlowPDUObject, sysUpTime), RO, "Router uptime" },
-  { "unix_secs", T_ULONG, offsetof(FlowPDUObject, unix_secs), RO, "Unix timestamp" },
-  { "unix_nsecs", T_ULONG, offsetof(FlowPDUObject, unix_nsecs), RO, "Unix timestamp (nsec part)" },
+  { "sysUpTime", T_UINT, offsetof(FlowPDUObject, sysUpTime), RO, "Router uptime" },
+  { "unix_secs", T_UINT, offsetof(FlowPDUObject, unix_secs), RO, "Unix timestamp" },
+  { "unix_nsecs", T_UINT, offsetof(FlowPDUObject, unix_nsecs), RO, "Unix timestamp (nsec part)" },
   { 0 } };
 
 static struct PyMethodDef FlowPDU_Methods[] = {
