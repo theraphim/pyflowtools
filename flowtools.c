@@ -39,7 +39,7 @@ typedef struct {
   uint64_t xfield;
   uint32_t sequence;
   uint32_t sysUpTime, unix_secs, unix_nsecs;
-  int length, count;
+  int length, count, version;
 } FlowPDUObject;
 
 typedef struct {
@@ -600,6 +600,8 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 
   ph = (struct ftpdu_header *) &self->ftpdu.buf;
 
+  self->version = ph->version;
+
   self->sequence = ph->flow_sequence;
   self->count = ph->count;
   
@@ -610,6 +612,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 #if BYTE_ORDER == LITTLE_ENDIAN
   SWAPINT32(self->sequence);
   SWAPINT16(self->count);
+  SWAPINT16(self->version);
 
   SWAPINT32(self->sysUpTime);
   SWAPINT32(self->unix_secs);
@@ -727,15 +730,24 @@ static void FlowPDU_Delete( FlowPDUObject *self )
 }
 
 static struct PyMemberDef FlowPDU_Members[] = {
-  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO, "Flow sequence number" },
-  { "count", T_INT, offsetof(FlowPDUObject, count), RO, "Flows in this PDU" },
-  { "sysUpTime", T_UINT, offsetof(FlowPDUObject, sysUpTime), RO, "Router uptime" },
-  { "unix_secs", T_UINT, offsetof(FlowPDUObject, unix_secs), RO, "Unix timestamp" },
-  { "unix_nsecs", T_UINT, offsetof(FlowPDUObject, unix_nsecs), RO, "Unix timestamp (nsec part)" },
+  { "version", T_INT, offsetof(FlowPDUObject, version), RO,
+    "unsigned int -> Netflow version." },
+  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO,
+    "unsigned int -> Seq counter of total flows seen." },
+  { "count", T_INT, offsetof(FlowPDUObject, count), RO,
+    "unsigned int -> The number of records in the PDU." },
+  { "sysUpTime", T_UINT, offsetof(FlowPDUObject, sysUpTime), RO,
+    "unsigned int -> Current time in millisecs since router booted." },
+  { "unix_secs", T_UINT, offsetof(FlowPDUObject, unix_secs), RO,
+    "unsigned int -> Current seconds since 0000 UTC 1970." },
+  { "unix_nsecs", T_UINT, offsetof(FlowPDUObject, unix_nsecs), RO,
+    "unsigned int -> Residual nanoseconds since 0000 UTC 1970." },
   { 0 } };
 
 static struct PyMethodDef FlowPDU_Methods[] = {
-  { "is_next", (PyCFunction)FlowPDU_IsNext, METH_VARARGS, "Is this next?" },
+  { "is_next", (PyCFunction)FlowPDU_IsNext, METH_VARARGS, 
+    "Check if given flow is next to self.\n\n"
+    "Return true if PDU goes immediately after self" },
   { NULL, NULL}
 };
 
@@ -762,7 +774,9 @@ PyTypeObject FlowPDUType = {
         (setattrofunc)0,                        /* tp_setattro */
         0,                                      /* tp_as_buffer */
         Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,                   /* tp_flags */
-        "Stream of netflow data",                                      /* tp_doc */
+        "FlowPDU(int exporter, string buffer) -> FlowPDU object.\n\n"
+        "Contains flow header attributes. Can be iterated over to get\n"
+        "individual flows.",                                      /* tp_doc */
         (traverseproc)0,                        /* tp_traverse */
         (inquiry)0,                             /* tp_clear */
         (richcmpfunc) FlowPDU_RichCompare,                                      /* tp_richcompare */
