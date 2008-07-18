@@ -5,7 +5,7 @@ import sys
 from distutils.core import setup, Extension
 
 setup( name="pyflowtools", 
-       version="0.3.3",
+       version="0.3.4",
        author="Paul P. Komkoff Jr",
        author_email="i@stingr.net",
        license="GPL",

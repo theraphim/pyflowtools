@@ -118,6 +118,8 @@ PyGetSetDef FlowObjectGS[] = {
 // End define flow attributes
 
 static PyObject *FlowToolsError;
+static PyObject *FlowToolsIOError;
+static PyObject *FlowToolsAttributeError;
 
 static void FlowSetObjectDelete( FlowSetObject *self );
 static PyObject *FlowSetObjectIter( FlowSetObject *o );
@@ -250,7 +252,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
         Py_END_ALLOW_THREADS
 
         if( self->fd < 0 ){
-            PyErr_SetFromErrnoWithFilename( PyExc_IOError, file );
+            PyErr_SetFromErrnoWithFilename( FlowToolsIOError, file );
             return -1;
         }
     }
@@ -261,7 +263,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     Py_END_ALLOW_THREADS
 
     if( res ) {
-        PyErr_SetString( FlowToolsError, "ftio_init() failed" );
+        PyErr_SetString( FlowToolsIOError, "ftio_init() failed" );
         return -1;
     }
 
@@ -392,7 +394,7 @@ resout:
   self->nflows += i;
 
   if (res < 0) {
-    PyErr_SetString( FlowToolsError, "Error writing the flow" );
+    PyErr_SetString( FlowToolsIOError, "Error writing the flow" );
     return NULL;
   }
 
@@ -416,7 +418,7 @@ static PyObject * FlowObjectGetter(FlowObject * self, struct RecordAttrDef * f) 
   struct fttime time;
 
   if( ! ( self->xfield & f->xfield ) ){
-    PyErr_SetString( FlowToolsError, "Attribute not supported by flow type" );
+    PyErr_SetString( FlowToolsAttributeError, "Attribute not supported by flow type" );
     return NULL;
   }
 
@@ -783,6 +785,26 @@ static struct PyMethodDef FlowToolsMethods[] = {
     { NULL }
 };
 
+static char* FlowToolsModuleDescription = 
+  "Python interface to OSU flow-tools library.\n\n"
+  "This module allows you to read, parse, and write netflow PDUs";
+
+static void InitExceptions(PyObject *module_dict) {
+  PyObject *t;
+
+  FlowToolsError = PyErr_NewException( "flowtools.Error", NULL, NULL );
+  PyDict_SetItemString( module_dict, "Error", FlowToolsError );
+
+  t = PyTuple_Pack(2, FlowToolsError, PyExc_IOError);
+  FlowToolsIOError = PyErr_NewException( "flowtools.IOError", t, NULL );
+  Py_XDECREF(t);
+  PyDict_SetItemString( module_dict, "IOError", FlowToolsIOError );
+
+  t = PyTuple_Pack(2, FlowToolsError, PyExc_AttributeError);
+  FlowToolsAttributeError = PyErr_NewException( "flowtools.AttributeError", t, NULL );
+  Py_XDECREF(t);
+  PyDict_SetItemString( module_dict, "AttributeError", FlowToolsAttributeError );
+}
 
 void initflowtools()
 {
@@ -799,7 +821,7 @@ void initflowtools()
         (PyType_Ready(&FlowPDUIterType) < 0))
       return;
 
-    m = Py_InitModule3( "flowtools", FlowToolsMethods, "test" );
+    m = Py_InitModule3( "flowtools", FlowToolsMethods, FlowToolsModuleDescription );
     
     Py_INCREF(&FlowSetType);
     Py_INCREF(&FlowPDUType);
@@ -810,7 +832,6 @@ void initflowtools()
     PyModule_AddObject(m, "Flow", (PyObject *) &FlowType);
 
     d = PyModule_GetDict( m );
-    FlowToolsError = PyErr_NewException( "flowtools.Error", NULL, NULL );
-    PyDict_SetItemString( d, "Error", FlowToolsError );
+    InitExceptions(d);
 }
 
