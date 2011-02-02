@@ -81,6 +81,7 @@ PyGetSetDef FlowObjectGS[] = {
   A(engine_id, RF_UINT8, FT_XFIELD_ENGINE_ID)
   A(engine_type, RF_UINT8, FT_XFIELD_ENGINE_TYPE)
   A(exaddr, RF_ADDR, FT_XFIELD_EXADDR)
+  B(exaddr_raw, RF_UINT32, FT_XFIELD_EXADDR, exaddr) 
   A(extra_pkts, RF_UINT32, FT_XFIELD_EXTRA_PKTS)
   B(first, RF_TIME, FT_XFIELD_FIRST, First)
   B(first_raw, RF_UINT32, FT_XFIELD_FIRST, First)
