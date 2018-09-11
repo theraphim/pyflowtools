@@ -9,6 +9,10 @@
 #define HAVE_STRSEP 1
 #include <ftlib.h>
 
+#if PY_MAJOR_VERSION >= 3
+#  define Py_TPFLAGS_HAVE_ITER 0
+#endif
+
 typedef struct {
   PyObject_HEAD
 
@@ -81,7 +85,7 @@ PyGetSetDef FlowObjectGS[] = {
   A(engine_id, RF_UINT8, FT_XFIELD_ENGINE_ID)
   A(engine_type, RF_UINT8, FT_XFIELD_ENGINE_TYPE)
   A(exaddr, RF_ADDR, FT_XFIELD_EXADDR)
-  B(exaddr_raw, RF_UINT32, FT_XFIELD_EXADDR, exaddr) 
+  B(exaddr_raw, RF_UINT32, FT_XFIELD_EXADDR, exaddr)
   A(extra_pkts, RF_UINT32, FT_XFIELD_EXTRA_PKTS)
   B(first, RF_TIME, FT_XFIELD_FIRST, First)
   B(first_raw, RF_UINT32, FT_XFIELD_FIRST, First)
@@ -135,8 +139,7 @@ static struct PyMethodDef FlowSetMethods[] = {
 
 
 PyTypeObject FlowSetType = {
-        PyObject_HEAD_INIT(&PyType_Type)
-        0,                                      /* ob_size */
+        PyVarObject_HEAD_INIT(NULL, 0)
         "flowtools.FlowSet",                    /* tp_name */
         sizeof( FlowSetObject),                 /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -172,6 +175,10 @@ PyTypeObject FlowSetType = {
         0,                                      /* tp_descr_set */
         0,                                      /* tp_dictoffset */
         (initproc) FlowSet_init,                /* tp_init */
+        0,                                      /* tp_alloc */
+        PyType_GenericNew,                      /* tp_new */
+        0,                                      /* tp_free */
+        0,                                      /* tp_is_gc */
 };
 
 static void FlowObjectDelete( FlowObject *self );
@@ -179,12 +186,11 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject* args );
 
 static struct PyMethodDef FlowMethods[] = {
     { "getID", (PyCFunction)FlowObjectGetID, METH_VARARGS, "Return flow ID" },
-    { NULL, NULL}	
+    { NULL, NULL}
 };
 
 PyTypeObject FlowType = {
-        PyObject_HEAD_INIT(&PyType_Type)
-        0,                                      /* ob_size */
+        PyVarObject_HEAD_INIT(NULL, 0)
         "flowtools.Flow",                       /* tp_name */
         sizeof( FlowObject),                    /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -221,7 +227,7 @@ PyTypeObject FlowType = {
         0,                                      /* tp_dictoffset */
         0,                                      /* tp_init */
         0,                                      /* tp_alloc */
-        0,                                      /* tp_new */
+        PyType_GenericNew,                      /* tp_new */
         0,                                      /* tp_free */
         0,                                      /* tp_is_gc */
 };
@@ -241,7 +247,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     int f_mmap = 0;
 
     if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sO", kwlist, &file, &for_writing) )
-        return -1; 
+        return -1;
 
     if (for_writing && PyBool_Check(for_writing) && (for_writing == Py_True))
       bForWriting = 1;
@@ -259,7 +265,7 @@ static int FlowSet_init(FlowSetObject *self, PyObject *args, PyObject *kwds) {
     }
 
     Py_BEGIN_ALLOW_THREADS
-    res = ftio_init( &self->io, self->fd, bForWriting ? (FT_IO_FLAG_WRITE | FT_IO_FLAG_ZINIT | FT_IO_FLAG_NO_SWAP) : 
+    res = ftio_init( &self->io, self->fd, bForWriting ? (FT_IO_FLAG_WRITE | FT_IO_FLAG_ZINIT | FT_IO_FLAG_NO_SWAP) :
       (FT_IO_FLAG_READ | f_mmap));
     Py_END_ALLOW_THREADS
 
@@ -320,7 +326,7 @@ static void FlowSetObjectDelete( FlowSetObject *self )
       Py_END_ALLOW_THREADS
     }
 
-    self->ob_type->tp_free(self);
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 static PyObject *FlowSetObjectIter( FlowSetObject *self )
@@ -338,31 +344,31 @@ static PyObject *FlowSetObjectIterNext( FlowSetObject *self )
 {
     FlowObject *flow;
     char *record;
-    
+
     if ((self->io.flags & FT_IO_FLAG_READ) == 0) {
       PyErr_SetNone(PyExc_ValueError);
       return NULL;
     }
 
     Py_BEGIN_ALLOW_THREADS
-    
+
     record = ftio_read( &self->io );
 
     Py_END_ALLOW_THREADS
-    
+
     if( ! record ){
         PyErr_SetNone( PyExc_StopIteration );
         return NULL;
     }
-    
-	flow = PyObject_NEW( FlowObject, &FlowType );
+
+        flow = PyObject_NEW( FlowObject, &FlowType );
     if( ! flow ) return NULL;
     flow->record = record;
     flow->parent = (PyObject*) self;
     flow->xfield = self->xfield;
     memcpy(&flow->offsets, &self->offsets, sizeof(self->offsets));
     Py_XINCREF( self );
-    
+
     return (PyObject *)flow;
 }
 
@@ -408,7 +414,7 @@ resout:
 static void FlowObjectDelete( FlowObject *self )
 {
     Py_XDECREF( self->parent );
-    self->ob_type->tp_free(self);
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 #define getoffset( f ) ( * ( (uint16_t *)( (void *)( &self->offsets ) + f->offset ) ) )
@@ -456,7 +462,7 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     char dst[8];
     int bidir = 0;
     char *p;
-    
+
     if( ! PyArg_ParseTuple( args, "|i", &bidir ) ) return NULL;
 
     p = src;
@@ -465,14 +471,14 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     memcpy( p, self->record + self->offsets.srcport, sizeof( uint16_t ) );
     p += sizeof( uint16_t );
     memcpy( p, self->record + self->offsets.input, sizeof( uint16_t ) );
-    
+
     p = dst;
     memcpy( p, self->record + self->offsets.dstaddr, sizeof( uint32_t ) );
     p += sizeof( uint32_t );
     memcpy( p, self->record + self->offsets.dstport, sizeof( uint16_t ) );
     p += sizeof( uint16_t );
     memcpy( p, self->record + self->offsets.output, sizeof( uint16_t ) );
-    
+
     p = buffer;
     if( ( ! bidir ) || ( memcmp( src, dst, sizeof( src ) ) < 0 ) ){
         memcpy( p, src, sizeof( src ) );
@@ -482,13 +488,13 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
     }
     else{
         memcpy( p, dst, sizeof( dst ) );
-        p += sizeof( dst ); 
+        p += sizeof( dst );
         memcpy( p, src, sizeof( src ) );
         p += sizeof( src );
     }
 
     memcpy( p, self->record + self->offsets.prot, sizeof( uint8_t ) );
-        
+
     return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
 }
 
@@ -526,13 +532,12 @@ static PyObject *FlowPDUIter_Next( FlowPDUIterObject *self )
 static void FlowPDUIter_Delete( FlowPDUIterObject *self )
 {
     Py_XDECREF( self->pdu );
-    self->ob_type->tp_free(self);
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 
 PyTypeObject FlowPDUIterType = {
-        PyObject_HEAD_INIT(&PyType_Type)
-        0,                                      /* ob_size */
+        PyVarObject_HEAD_INIT(NULL, 0)
         "flowtools.FlowPDUIter",                    /* tp_name */
         sizeof( FlowPDUIterObject),                 /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -567,7 +572,11 @@ PyTypeObject FlowPDUIterType = {
         0,                                      /* tp_descr_get */
         0,                                      /* tp_descr_set */
         0,                                      /* tp_dictoffset */
-        0,                /* tp_init */
+        0,                                      /* tp_init */
+        0,                                      /* tp_alloc */
+        PyType_GenericNew,                      /* tp_new */
+        0,                                      /* tp_free */
+        0,                                      /* tp_is_gc */
 };
 
 
@@ -584,7 +593,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
   int res = 0;
   struct ftpdu_header * ph = NULL;
 
-  if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) ) 
+  if( ! PyArg_ParseTupleAndKeywords( args, kwds, "Is#", kwlist, &exporter_ip, &buf, &buflen ) )
     return -1;
 
   bzero (&self->ftpdu, sizeof(self->ftpdu));
@@ -605,7 +614,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 
   self->sequence = ph->flow_sequence;
   self->count = ph->count;
-  
+
   self->sysUpTime = ph->sysUpTime;
   self->unix_secs = ph->unix_secs;
   self->unix_nsecs = ph->unix_nsecs;
@@ -628,7 +637,7 @@ static int FlowPDU_init(FlowPDUObject * self, PyObject * args, PyObject * kwds) 
 resout:
   Py_END_ALLOW_THREADS
 
-  if (res < 0) 
+  if (res < 0)
     return -1;
 
   return 0;
@@ -670,7 +679,7 @@ static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) 
     if (o1->sysUpTime <= o2->sysUpTime) {
       if (o1->unix_secs < o2->unix_secs)
         Py_RETURN_TRUE;
-      else 
+      else
         if ((o1->unix_secs == o2->unix_secs) && (o1->unix_nsecs <= o2->unix_nsecs))
           Py_RETURN_TRUE;
     } else {
@@ -680,8 +689,8 @@ static PyObject* FlowPDU_Compare_Helper(FlowPDUObject * o1, FlowPDUObject * o2) 
         if ((o1->unix_secs == o2->unix_secs) && (o1->unix_nsecs >= o2->unix_nsecs))
           Py_RETURN_TRUE;
     }
-  } 
-          
+  }
+
   Py_RETURN_FALSE;
 }
 
@@ -701,7 +710,7 @@ static PyObject* FlowPDU_RichCompare(FlowPDUObject * o1, FlowPDUObject * o2, int
   if ((opid == Py_NE) || (opid == Py_EQ) || (opid == Py_LE) || (opid == Py_GE)) {
     if (memcmp(o1->ftpdu.buf, o2->ftpdu.buf, o1->ftpdu.bused) == 0)
       return Py_ReturnBool((opid == Py_EQ) || (opid == Py_LE) || (opid == Py_GE));
-    else 
+    else
       if ((opid == Py_NE) || (opid == Py_EQ))
         return Py_ReturnBool(opid == Py_NE);
   }
@@ -727,26 +736,26 @@ static PyObject *FlowPDU_IsNext(FlowPDUObject * self, PyObject * args, PyObject 
 
 static void FlowPDU_Delete( FlowPDUObject *self )
 {
-    self->ob_type->tp_free(self);
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 static struct PyMemberDef FlowPDU_Members[] = {
-  { "version", T_INT, offsetof(FlowPDUObject, version), RO,
+  { "version", T_INT, offsetof(FlowPDUObject, version), READONLY,
     "unsigned int -> Netflow version." },
-  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), RO,
+  { "sequence", T_UINT, offsetof(FlowPDUObject, sequence), READONLY,
     "unsigned int -> Seq counter of total flows seen." },
-  { "count", T_INT, offsetof(FlowPDUObject, count), RO,
+  { "count", T_INT, offsetof(FlowPDUObject, count), READONLY,
     "unsigned int -> The number of records in the PDU." },
-  { "sysUpTime", T_UINT, offsetof(FlowPDUObject, sysUpTime), RO,
+  { "sysUpTime", T_UINT, offsetof(FlowPDUObject, sysUpTime), READONLY,
     "unsigned int -> Current time in millisecs since router booted." },
-  { "unix_secs", T_UINT, offsetof(FlowPDUObject, unix_secs), RO,
+  { "unix_secs", T_UINT, offsetof(FlowPDUObject, unix_secs), READONLY,
     "unsigned int -> Current seconds since 0000 UTC 1970." },
-  { "unix_nsecs", T_UINT, offsetof(FlowPDUObject, unix_nsecs), RO,
+  { "unix_nsecs", T_UINT, offsetof(FlowPDUObject, unix_nsecs), READONLY,
     "unsigned int -> Residual nanoseconds since 0000 UTC 1970." },
   { 0 } };
 
 static struct PyMethodDef FlowPDU_Methods[] = {
-  { "is_next", (PyCFunction)FlowPDU_IsNext, METH_VARARGS, 
+  { "is_next", (PyCFunction)FlowPDU_IsNext, METH_VARARGS,
     "Check if given flow is next to self.\n\n"
     "Return true if PDU goes immediately after self" },
   { NULL, NULL}
@@ -754,8 +763,7 @@ static struct PyMethodDef FlowPDU_Methods[] = {
 
 
 PyTypeObject FlowPDUType = {
-        PyObject_HEAD_INIT(&PyType_Type)
-        0,                                      /* ob_size */
+        PyVarObject_HEAD_INIT(NULL, 0)
         "flowtools.FlowPDU",                    /* tp_name */
         sizeof( FlowPDUObject),                 /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -793,16 +801,16 @@ PyTypeObject FlowPDUType = {
         0,                                      /* tp_descr_set */
         0,                                      /* tp_dictoffset */
         (initproc) FlowPDU_init,                /* tp_init */
+        0,                                      /* tp_alloc */
+        PyType_GenericNew,                      /* tp_new */
+        0,                                      /* tp_free */
+        0,                                      /* tp_is_gc */
 };
 
 
-static struct PyMethodDef FlowToolsMethods[] = {
-    { NULL }
-};
-
-static char* FlowToolsModuleDescription = 
-  "Python interface to OSU flow-tools library.\n\n"
-  "This module allows you to read, parse, and write netflow PDUs";
+#define MODULE_DESCRIPTION \
+  "Python interface to OSU flow-tools library.\n\n" \
+  "This module allows you to read, parse, and write netflow PDUs"
 
 static void InitExceptions(PyObject *module_dict) {
   PyObject *t;
@@ -821,23 +829,50 @@ static void InitExceptions(PyObject *module_dict) {
   PyDict_SetItemString( module_dict, "AttributeError", FlowToolsAttributeError );
 }
 
-void initflowtools()
+#if PY_MAJOR_VERSION >= 3
+#  define INITERROR return NULL
+
+static struct PyModuleDef moduledef = {
+  PyModuleDef_HEAD_INIT,
+  "flowtools",
+  MODULE_DESCRIPTION,
+  0,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL
+};
+
+PyMODINIT_FUNC
+PyInit_flowtools(void)
+
+#else
+#  define INITERROR return
+
+static struct PyMethodDef FlowToolsMethods[] = {
+    { NULL }
+};
+
+void initflowtools(void)
+#endif
 {
     PyObject *d, *m;
 
-    FlowSetType.tp_new = PyType_GenericNew;
-    FlowType.tp_new = PyType_GenericNew;
-    FlowPDUType.tp_new = PyType_GenericNew;
-    FlowPDUIterType.tp_new = PyType_GenericNew;
-
-    if ((PyType_Ready(&FlowSetType) < 0) || 
+    if ((PyType_Ready(&FlowSetType) < 0) ||
         (PyType_Ready(&FlowType) < 0) ||
         (PyType_Ready(&FlowPDUType) < 0) ||
         (PyType_Ready(&FlowPDUIterType) < 0))
-      return;
+      INITERROR;
 
-    m = Py_InitModule3( "flowtools", FlowToolsMethods, FlowToolsModuleDescription );
-    
+#if PY_MAJOR_VERSION >= 3
+    m = PyModule_Create(&moduledef);
+#else
+    m = Py_InitModule3( "flowtools", FlowToolsMethods, MODULE_DESCRIPTION );
+#endif
+    if (!m)
+      INITERROR;
+
     Py_INCREF(&FlowSetType);
     Py_INCREF(&FlowPDUType);
     Py_INCREF(&FlowType);
@@ -848,5 +883,8 @@ void initflowtools()
 
     d = PyModule_GetDict( m );
     InitExceptions(d);
-}
 
+#if PY_MAJOR_VERSION >= 3
+    return m;
+#endif
+}
