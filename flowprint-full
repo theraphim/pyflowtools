@@ -1,5 +1,7 @@
 #! /usr/bin/env python
 
+from __future__ import print_function
+
 import flowtools
 import sys
 
@@ -14,7 +16,7 @@ def printAttr( flow, attr, raw = 0 ):
             val1 = eval( "flow." + attr )
             val2 = "(0x%lx)"  % eval( "flow." + attr + "_raw" )
             
-        print "%15s" % attr, val1, val2
+        print("%15s" % attr, val1, val2)
             
     except flowtools.Error:
         pass
@@ -56,12 +58,11 @@ try:
         printAttr( flow, "tos" )
         printAttr( flow, "unix_nsecs" )
         printAttr( flow, "unix_secs" )
-        print
+        print()
 
 except KeyboardInterrupt:
     pass
 
-except IOError, e:
+except IOError as e:
     if e.errno != errno.EPIPE:
-        print >>sys.stderr,  e 
-        
+        print(e, file=sys.stderr)
