@@ -11,6 +11,9 @@
 
 #if PY_MAJOR_VERSION >= 3
 #  define Py_TPFLAGS_HAVE_ITER 0
+#  define BYTES_FMT "y#"
+#else
+#  define BYTES_FMT "s#"
 #endif
 
 typedef struct {
@@ -495,7 +498,7 @@ static PyObject *FlowObjectGetID( FlowObject *self, PyObject *args )
 
     memcpy( p, self->record + self->offsets.prot, sizeof( uint8_t ) );
 
-    return Py_BuildValue( "s#", buffer, sizeof( buffer ) );
+    return Py_BuildValue(BYTES_FMT, buffer, sizeof( buffer ) );
 }
 
 static PyObject *FlowPDUIter_Iter( FlowPDUIterObject *self )
