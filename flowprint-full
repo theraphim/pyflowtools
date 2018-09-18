@@ -9,13 +9,12 @@ set = flowtools.FlowSet( "-" )
 
 def printAttr( flow, attr, raw = 0 ):
     try:
-        if not raw:
-            val1 = eval( "flow." + attr )
-            val2 = ""
+        val1 = getattr(flow, attr)
+        if raw:
+            val2 = "(0x%lx)"  % getattr(flow, attr + "_raw")
         else:
-            val1 = eval( "flow." + attr )
-            val2 = "(0x%lx)"  % eval( "flow." + attr + "_raw" )
-            
+            val2 = ''
+
         print("%15s" % attr, val1, val2)
             
     except flowtools.Error:
